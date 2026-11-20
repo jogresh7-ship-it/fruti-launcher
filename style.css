@@ -431,3 +431,7 @@ input, button { font-family: inherit; font-size-adjust: inherit; }
   .hero .art-fg { left: 0; background-position: center; opacity: .55; }
 }
 .card .art.img { opacity: .92; }
+
+/* Cover images fill the whole box */
+.art-fg, .card.h .art-fg, .m-cover .art-fg, .hero .art-fg { inset: 0; left: 0; background-size: cover; background-position: center; opacity: 1; }
+.art-blur { display: none; }

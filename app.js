@@ -1,6 +1,6 @@
 (() => {
   "use strict";
-  const VERSION = "5";
+  const VERSION = "6";
   const games = window.FRUTI_GAMES || [];
   const byId = Object.fromEntries(games.map((g) => [g.id, g]));
   const $ = (s) => document.querySelector(s);
@@ -19,7 +19,6 @@
     store.get("settings", {})
   );
   const save = () => { store.set("settings", settings); };
-  const totalMs = () => Object.values(times).reduce((a, b) => a + b, 0);
 
   // ---------- Formatting ----------
   const fmt = (ms) => { const m = Math.floor(ms / 60000); return m >= 60 ? `${Math.floor(m / 60)}h ${m % 60}m` : `${m}m`; };
@@ -51,14 +50,12 @@
   const I = {
     home: `<span class="logo"></span>`,
     library: `<svg viewBox="0 0 24 24"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>`,
-    gifts: `<svg viewBox="0 0 24 24"><path d="M20 12v10H4V12M2 7h20v5H2zM12 22V7M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7zM12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"/></svg>`,
     settings: `<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>`,
-    account: `<svg viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>`,
     clock: `<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>`,
   };
 
   // ---------- Navigation ----------
-  const TABS = [["home", "Fruti"], ["library", "Library"], ["gifts", "Gifts"], ["settings", "Settings"], ["account", "Profile"]];
+  const TABS = [["home", "Fruti"], ["library", "Library"], ["settings", "Settings"]];
   let tab = "home";
   TABS.forEach(([id, label]) => {
     const a = h("button", "sb-item", `${I[id]}<span class="sb-label">${label}</span>`);
@@ -74,7 +71,6 @@
     document.querySelectorAll(".view").forEach((v) => v.classList.toggle("active", v.dataset.view === id));
     document.querySelectorAll("[data-tab]").forEach((b) => b.classList.toggle("active", b.dataset.tab === id));
     $("#wrap").scrollTop = 0;
-    if (id === "account") renderAccount();
   }
 
   document.body.classList.toggle("sb-open", settings.sbOpen);
@@ -175,7 +171,6 @@
       $("#last-name").textContent = last.title;
       $("#last").onclick = () => play(last);
     }
-    $("#total").textContent = fmt(totalMs());
   }
   const clock = () => { $("#clock").textContent = new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }); };
 
@@ -258,7 +253,6 @@
     times[current.id] = (times[current.id] || 0) + (now - playStart);
     playStart = now;
     store.set("times", times);
-    $("#total").textContent = fmt(totalMs());
   }, 15000);
 
   $("#notch-home").onclick = () => show(tab);
@@ -289,47 +283,6 @@
     s.onclick = () => { settings.theme = name; save(); applyTheme(); };
     $("#themes").appendChild(s);
   });
-
-  const P_ICONS = {
-    none: `<circle cx="12" cy="12" r="10"/><path d="M4.93 4.93l14.14 14.14"/>`,
-    snow: `<path d="M12 2v20M2 12h20M5 5l14 14M19 5L5 19"/>`,
-    rain: `<path d="M16 13v8M8 13v8M12 15v8M20 16.58A5 5 0 0 0 18 7h-1.26A8 8 0 1 0 4 15.25"/>`,
-    stars: `<path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01z"/>`,
-    bubbles: `<circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="4"/>`,
-    fireflies: `<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/>`,
-    nexus: `<circle cx="6" cy="6" r="3"/><circle cx="18" cy="18" r="3"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="6" r="3"/><path d="M8 8l8 8M8 16l8-8"/>`,
-  };
-  Object.entries(P_ICONS).forEach(([name, path]) => {
-    const c = h("button", "p-card", `<svg viewBox="0 0 24 24">${path}</svg><span>${name[0].toUpperCase() + name.slice(1)}</span>`);
-    c.dataset.p = name;
-    c.onclick = () => { settings.particles = name; save(); particles.set(name); markParticles(); };
-    $("#particle-opts").appendChild(c);
-  });
-  const markParticles = () => document.querySelectorAll(".p-card").forEach((c) => c.classList.toggle("active", c.dataset.p === settings.particles));
-
-  $("#opt-fullscreen").checked = settings.fullscreen;
-  $("#opt-rotate").checked = settings.rotate;
-  $("#opt-fullscreen").onchange = (e) => { settings.fullscreen = e.target.checked; save(); };
-  $("#opt-rotate").onchange = (e) => { settings.rotate = e.target.checked; save(); startRotate(); };
-  $("#clear-history").onclick = () => {
-    if (!confirm("Clear your play history and play time?")) return;
-    history = []; times = {};
-    store.set("history", history); store.set("times", times);
-    renderHome(); renderLibrary(); renderSidebar(); renderAccount();
-  };
-
-  // ---------- Profile ----------
-  function renderAccount() {
-    const name = settings.name.trim() || "Player";
-    $("#acc-name-title").textContent = name;
-    $("#acc-time").textContent = fmt(totalMs());
-    $("#acc-played").textContent = Object.keys(times).filter((k) => byId[k]).length || new Set(history.map((x) => x.id)).size;
-    const fav = Object.entries(times).filter(([k]) => byId[k]).sort((a, b) => b[1] - a[1])[0];
-    $("#acc-fav").textContent = fav ? byId[fav[0]].title : "-";
-    $("#acc-lib").textContent = games.length + " games";
-  }
-  $("#acc-name").value = settings.name;
-  $("#acc-name").oninput = (e) => { settings.name = e.target.value; save(); renderAccount(); };
 
   // ---------- Particles ----------
   const particles = (() => {
@@ -378,10 +331,9 @@
 
   // ---------- Init ----------
   applyTheme();
-  markParticles();
   particles.set(settings.particles);
   show("home");
-  renderHome(); renderLibrary(); renderSidebar(); renderAccount();
+  renderHome(); renderLibrary(); renderSidebar();
   startRotate();
   clock(); setInterval(clock, 10000);
   setInterval(renderSidebar, 60000);
