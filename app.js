@@ -130,8 +130,9 @@
     store.set("history", history);
     renderHistory();
     $("#playerTitle").textContent = g.title;
-    $("#playerFrame").src = g.url || "about:blank";
-    $("#playerEmpty").hidden = !!g.url;
+    const src = g.swf ? "play.html?swf=" + encodeURIComponent(g.swf) : g.url;
+    $("#playerFrame").src = src || "about:blank";
+    $("#playerEmpty").hidden = !!src;
     $("#player").hidden = false;
     playStart = Date.now();
     if (settings.fullscreen) $("#player").requestFullscreen?.().catch(() => {});
