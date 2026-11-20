@@ -1,6 +1,11 @@
 (() => {
   "use strict";
-  const VERSION = "8";
+  const VERSION = "9";
+  // When the launcher runs somewhere without its files (e.g. pasted into LiveCodes,
+  // which serves it from a blob: URL), load games and covers from the GitHub Pages site.
+  const SITE = "https://jogresh7-ship-it.github.io/fruti-launcher/";
+  const BASE = /^(https?|file):$/.test(location.protocol) ? "" : SITE;
+  const abs = (p) => (!p || /^[a-z]+:/i.test(p) ? p : BASE + p);
   const games = window.FRUTI_GAMES || [];
   const byId = Object.fromEntries(games.map((g) => [g.id, g]));
   const $ = (s) => document.querySelector(s);
@@ -30,7 +35,7 @@
     return Math.round(m / 1440) + "d ago";
   };
   const initials = (t) => t.replace(/[^A-Za-z0-9 ]/g, "").split(/\s+/).filter(Boolean).map((w) => /^\d+$/.test(w) ? w : w[0]).join("").slice(0, 4).toUpperCase();
-  const bg = (g) => g.image ? `url("${g.image}")` : `linear-gradient(135deg, ${g.color?.[0] || "#333"}, ${g.color?.[1] || "#111"})`;
+  const bg = (g) => g.image ? `url("${abs(g.image)}")` : `linear-gradient(135deg, ${g.color?.[0] || "#333"}, ${g.color?.[1] || "#111"})`;
   const art = (g) => {
     const a = h("div", "art");
     if (g.image) {
@@ -197,7 +202,7 @@
   // ---------- Game: opens in its own browser tab ----------
   function play(g) {
     closeModal();
-    const src = g.swf ? `play.html?v=${VERSION}&game=${encodeURIComponent(g.swf)}` : g.url;
+    const src = abs(g.swf ? `play.html?v=${VERSION}&game=${encodeURIComponent(g.swf)}` : g.url);
     if (!src) { alert("No game file set for " + g.title + " yet."); return; }
     history = [{ id: g.id, at: Date.now() }, ...history.filter((x) => x.id !== g.id)].slice(0, 40);
     store.set("history", history);
