@@ -26,6 +26,9 @@ Browsers block `fetch()` for pages opened from disk (`file://`), so normal `.swf
 - Recommended row, plus a searchable Library
 - Collapsible right sidebar with played history, clock and total play time (saved in the browser)
 
-## Font
+## Fonts
 
-Headings, titles and buttons use **Rostex** (`fonts/rostex.otf`). It's embedded in `style.css` as base64 so it also works when the page is opened from disk. Body text uses Inter.
+- **Rostex** (`fonts/rostex.otf`): only the section headings, such as "Continue Playing", "Games We Recommend" and "Strategy & Tower Defense".
+- **Easy Noise** (`fonts/easy-noise.ttf`): all other text, including the sidebar, top bar, cards and game pages.
+
+Both are embedded in `style.css` as base64, so they also work when the page is opened from disk.
