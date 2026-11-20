@@ -1,0 +1,1 @@
+(window.FRUTI_EJS=window.FRUTI_EJS||{})["cores/reports/mupen64plus_next.json"]="eyAiY29yZSI6ICJtdXBlbjY0cGx1c19uZXh0IiwgImJ1aWxkU3RhcnQiOiAiMjAyNS0wNi0xNFQxODoxMjo1MyswMDowMCIsICJidWlsZEVuZCI6ICIyMDI1LTA2LTE0VDE4OjE2OjAxKzAwOjAwIiwgIm9wdGlvbnMiOiB7ICJkZWZhdWx0V2ViR0wyIjogdHJ1ZSB9IH0K";

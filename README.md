@@ -13,6 +13,13 @@ Edit `games.js`.
   ```
 
   This writes `games/my-game.js`. Flash games play through [Ruffle](https://ruffle.rs) 0.7.1, which is bundled in `ruffle/`.
+- **Nintendo 64 games:** convert the ROM once, then add an entry with `rom: "<id>"`. It shows in the Nintendo 64 tab:
+
+  ```bash
+  python3 tools/embed.py rom path/to/my-game.z64 my-game
+  ```
+
+  N64 games play through [EmulatorJS](https://github.com/EmulatorJS/EmulatorJS) 4.2.3 (bundled in `emulatorjs/`, GPL-3.0). The Nintendo 64 tab also has a **Play a ROM** box that plays a ROM straight from your computer without adding it.
 - **Web games:** set `url` to the page to load instead.
 - `image` is the cover picture. Covers are screenshots of each game, saved in `covers/` as JPGs. Games without one get a gradient from `color`.
 
@@ -25,7 +32,7 @@ Browsers block `fetch()` for pages opened from disk (`file://`), so normal `.swf
 - Featured "Continue Playing" banner that rotates and puts recently played games first
 - Recommended row, plus a searchable Library
 - Games open in their own browser tab, titled with the game name
-- Collapsible right sidebar with Fruti, Library and Settings, plus played history and a clock
+- Collapsible right sidebar with Fruti, Library, Flash, Nintendo 64 and Settings, plus played history and a clock
 - Settings: theme color and background particles (none, snow, rain, stars, bubbles, fireflies, nexus)
 
 ## Fonts
