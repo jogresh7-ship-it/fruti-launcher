@@ -1,0 +1,1 @@
+(window.FRUTI_EJS=window.FRUTI_EJS||{})["cores/reports/genesis_plus_gx.json"]="eyAiY29yZSI6ICJnZW5lc2lzX3BsdXNfZ3giLCAiYnVpbGRTdGFydCI6ICIyMDI1LTA2LTE0VDE4OjI5OjEyKzAwOjAwIiwgImJ1aWxkRW5kIjogIjIwMjUtMDYtMTRUMTg6MzA6MzgrMDA6MDAiLCAib3B0aW9ucyI6IHt9IH0K";

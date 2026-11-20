@@ -1,0 +1,1 @@
+(window.FRUTI_EJS=window.FRUTI_EJS||{})["cores/reports/mgba.json"]="eyAiY29yZSI6ICJtZ2JhIiwgImJ1aWxkU3RhcnQiOiAiMjAyNS0wNi0xNFQxODoxMDozMiswMDowMCIsICJidWlsZEVuZCI6ICIyMDI1LTA2LTE0VDE4OjExOjQ3KzAwOjAwIiwgIm9wdGlvbnMiOiB7fSB9Cg==";

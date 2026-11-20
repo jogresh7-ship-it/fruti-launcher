@@ -4,13 +4,12 @@ so n64.html works from file:// (no server). Output: emulatorjs/embed/*.js"""
 import base64, os
 root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 data = os.path.join(root, "emulatorjs", "data")
-files = [
-    "cores/reports/mupen64plus_next.json",
-    "cores/mupen64plus_next-wasm.data",
-    "cores/mupen64plus_next-legacy-wasm.data",
-    "compression/extract7z.js",
-    "compression/extractzip.js",
-]
+# every core (.data), core report (.json) and decompressor shipped in emulatorjs/data
+files = ["compression/extract7z.js", "compression/extractzip.js"]
+for sub in ("cores", "cores/reports"):
+    for name in sorted(os.listdir(os.path.join(data, sub))):
+        if name.endswith((".data", ".json")):
+            files.append(sub + "/" + name)
 out = os.path.join(root, "emulatorjs", "embed")
 os.makedirs(out, exist_ok=True)
 for key in files:

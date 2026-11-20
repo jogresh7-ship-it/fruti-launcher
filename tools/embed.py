@@ -2,7 +2,8 @@
 """Turn .swf / .wasm files into .js files so the launcher works from file:// (no server).
 
   python3 tools/embed.py swf  path/to/game.swf  <id>   -> games/<id>.js
-  python3 tools/embed.py rom  path/to/game.z64  <id>   -> games/n64/<id>.js  (Nintendo 64)
+  python3 tools/embed.py rom  path/to/game.nds  <id> <console>  -> games/<console>/<id>.js
+      (console = an id from consoles.js: nds, n64, gba, gb, snes, nes, segaMD, psx; default n64)
   python3 tools/embed.py wasm path/to/file.wasm        -> ruffle/<file>.wasm.js
 """
 import base64, os, sys
@@ -21,8 +22,9 @@ if kind == "swf":
     write(os.path.join(root, "games", gid + ".js"), "FRUTI_SWF", gid, data)
 elif kind == "rom":
     gid = sys.argv[3]
-    os.makedirs(os.path.join(root, "games", "n64"), exist_ok=True)
-    write(os.path.join(root, "games", "n64", gid + ".js"), "FRUTI_ROM", gid, data)
+    con = sys.argv[4] if len(sys.argv) > 4 else "n64"
+    os.makedirs(os.path.join(root, "games", con), exist_ok=True)
+    write(os.path.join(root, "games", con, gid + ".js"), "FRUTI_ROM", gid, data)
 else:
     name = os.path.basename(src)
     write(os.path.join(root, "ruffle", name + ".js"), "FRUTI_WASM", name, data)

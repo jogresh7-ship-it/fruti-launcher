@@ -1,0 +1,1 @@
+(window.FRUTI_EJS=window.FRUTI_EJS||{})["cores/reports/gambatte.json"]="eyAiY29yZSI6ICJnYW1iYXR0ZSIsICJidWlsZFN0YXJ0IjogIjIwMjUtMDYtMTRUMTg6MDk6MjErMDA6MDAiLCAiYnVpbGRFbmQiOiAiMjAyNS0wNi0xNFQxODoxMDozMiswMDowMCIsICJvcHRpb25zIjoge30gfQo=";

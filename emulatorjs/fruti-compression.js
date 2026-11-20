@@ -147,13 +147,8 @@ if (typeof EmulatorJS === "function") EmulatorJS.prototype.checkForUpdates = fun
 /* ---- Fruti: serve EmulatorJS downloads from embedded copies when opened from file:// ---- */
 (function () {
   if (location.protocol !== "file:" || typeof EmulatorJS !== "function") return;
-  var EMBED = {
-    "cores/reports/mupen64plus_next.json": 1,
-    "cores/mupen64plus_next-wasm.data": 1,
-    "cores/mupen64plus_next-legacy-wasm.data": 1,
-    "compression/extract7z.js": 1,
-    "compression/extractzip.js": 1
-  };
+  // files shipped as base64 copies in emulatorjs/embed/ (see tools/embed-emulatorjs.py)
+  var EMBED = { test: function (p) { return /^(cores\/[\w.-]+\.(data|json)|cores\/reports\/[\w.-]+\.json|compression\/extract(7z|zip)\.js)$/.test(p); } };
   function load(key) {
     return new Promise(function (ok, fail) {
       if (window.FRUTI_EJS && window.FRUTI_EJS[key]) return ok();
@@ -169,7 +164,7 @@ if (typeof EmulatorJS === "function") EmulatorJS.prototype.checkForUpdates = fun
   }
   var orig = EmulatorJS.prototype.downloadFile;
   EmulatorJS.prototype.downloadFile = function (path, progressCB, notWithPath, opts) {
-    if (typeof path === "string" && !notWithPath && EMBED[path]) {
+    if (typeof path === "string" && !notWithPath && EMBED.test(path)) {
       return load(path).then(function (u) {
         if (opts && opts.method === "HEAD") return { headers: {} };
         var t = opts && (opts.responseType || opts.type);

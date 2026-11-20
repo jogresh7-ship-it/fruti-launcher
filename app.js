@@ -1,6 +1,6 @@
 (() => {
   "use strict";
-  const VERSION = "10";
+  const VERSION = "11";
   // When the launcher runs somewhere without its files (e.g. pasted into LiveCodes,
   // which serves it from a blob: URL), load games and covers from the GitHub Pages site.
   const SITE = "https://jogresh7-ship-it.github.io/fruti-launcher/";
@@ -62,13 +62,21 @@
   };
 
   // ---------- Navigation ----------
-  const TABS = [["home", "Fruti"], ["library", "Library"], ["flash", "Flash"], ["n64", "Nintendo 64"], ["settings", "Settings"]];
+  const CONSOLES = window.FRUTI_CONSOLES || [];
+  const TABS = [["home", "Fruti"], ["library", "Library"], ["flash", "Flash"], ...CONSOLES.map((c) => ["c-" + c.id, c.name]), ["settings", "Settings"]];
+  // One page per console, added before the Settings page
+  CONSOLES.forEach((c) => {
+    const sec = h("section", "view", `<h2 class="sec-head" style="margin-top:0">${esc(c.name)}</h2><div class="grid-v" id="grid-${c.id}"></div>`);
+    sec.dataset.view = "c-" + c.id;
+    $("#wrap").insertBefore(sec, document.querySelector('[data-view="settings"]'));
+  });
   let tab = "home";
+  const consoleIcon = (id) => { const c = CONSOLES.find((x) => "c-" + x.id === id); return c ? `<span class="cicon">${c.tag}</span>` : ""; };
   TABS.forEach(([id, label]) => {
-    const a = h("button", "sb-item", `${I[id]}<span class="sb-label">${label}</span>`);
+    const a = h("button", "sb-item", `${I[id] || consoleIcon(id)}<span class="sb-label">${label}</span>`);
     a.dataset.tab = id; a.title = label; a.onclick = () => show(id);
     $("#nav").appendChild(a);
-    const b = h("button", "mnav-btn", `${I[id]}<span>${label}</span>`);
+    const b = h("button", "mnav-btn", `${I[id] || I.n64}<span>${CONSOLES.find((x) => "c-" + x.id === id)?.tag || label}</span>`);
     b.dataset.tab = id; b.onclick = () => show(id);
     $("#mnav").appendChild(b);
   });
@@ -156,20 +164,24 @@
   $("#search").oninput = renderLibrary;
 
   // ---------- Console tabs ----------
-  const isN64 = (g) => !!g.rom || g.console === "n64";
+  const consoleOf = (g) => g.rom ? (g.console || "n64") : null;   // null = Flash / web game
+  const isN64 = (g) => consoleOf(g) === "n64";
   function renderConsoles() {
     const fl = $("#flash-grid"); fl.innerHTML = "";
-    const flash = games.filter((g) => !isN64(g));
+    const flash = games.filter((g) => !consoleOf(g));
     if (!flash.length) fl.appendChild(h("p", "empty", "No Flash games yet."));
     flash.forEach((g) => fl.appendChild(card(g, "v")));
 
-    const n = $("#n64-grid"); n.innerHTML = "";
-    // "Play your own ROM" box
-    const own = h("button", "card v rom-card", `<div class="rom-inner">${I.n64}<b>Play a ROM</b><span>From your computer</span></div>`);
-    own.onclick = () => window.open(abs("n64.html?v=" + VERSION), "_blank");
-    n.appendChild(own);
-    games.filter(isN64).forEach((g) => n.appendChild(card(g, "v")));
+    CONSOLES.forEach((c) => {
+      const grid = $("#grid-" + c.id); grid.innerHTML = "";
+      // "Play your own ROM" box
+      const own = h("button", "card v rom-card", `<div class="rom-inner"><span class="cicon big">${c.tag}</span><b>Play a ROM</b><span>From your computer</span></div>`);
+      own.onclick = () => window.open(abs(`emu.html?v=${VERSION}&system=${c.id}`), "_blank");
+      grid.appendChild(own);
+      games.filter((g) => consoleOf(g) === c.id).forEach((g) => grid.appendChild(card(g, "v")));
+    });
   }
+
 
   // ---------- Sidebar ----------
   function renderSidebar() {
@@ -206,7 +218,7 @@
     $("#m-genre").textContent = g.tags[0] || "";
     $("#m-tags").innerHTML = g.tags.map((t) => `<span class="m-tg">${esc(t)}</span>`).join("");
     $("#m-desc").textContent = g.desc || "No description yet.";
-    $("#m-platform").textContent = isN64(g) ? "Nintendo 64" : g.swf ? "Flash (Ruffle)" : "Web";
+    $("#m-platform").textContent = consoleOf(g) ? (CONSOLES.find((c) => c.id === consoleOf(g))?.name || consoleOf(g)) : g.swf ? "Flash (Ruffle)" : "Web";
     $("#m-time").textContent = fmt(times[g.id] || 0);
     const hx = history.find((x) => x.id === g.id);
     $("#m-last").textContent = hx ? ago(hx.at) : "Never";
@@ -220,7 +232,7 @@
   // ---------- Game: opens in its own browser tab ----------
   function play(g) {
     closeModal();
-    const src = abs(g.rom ? `n64.html?v=${VERSION}&game=${encodeURIComponent(g.rom)}` : g.swf ? `play.html?v=${VERSION}&game=${encodeURIComponent(g.swf)}` : g.url);
+    const src = abs(g.rom ? `emu.html?v=${VERSION}&system=${consoleOf(g)}&game=${encodeURIComponent(g.rom)}` : g.swf ? `play.html?v=${VERSION}&game=${encodeURIComponent(g.swf)}` : g.url);
     if (!src) { alert("No game file set for " + g.title + " yet."); return; }
     history = [{ id: g.id, at: Date.now() }, ...history.filter((x) => x.id !== g.id)].slice(0, 40);
     store.set("history", history);

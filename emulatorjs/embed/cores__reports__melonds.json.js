@@ -1,0 +1,1 @@
+(window.FRUTI_EJS=window.FRUTI_EJS||{})["cores/reports/melonds.json"]="eyAiY29yZSI6ICJtZWxvbmRzIiwgImJ1aWxkU3RhcnQiOiAiMjAyNS0wNi0xNFQxODoxNjowMSswMDowMCIsICJidWlsZEVuZCI6ICIyMDI1LTA2LTE0VDE4OjE4OjMyKzAwOjAwIiwgIm9wdGlvbnMiOiB7ICJkZWZhdWx0V2ViR0wyIjogdHJ1ZSwgInN1cHBvcnRzTW91c2UiOiB0cnVlIH0gfQo=";
