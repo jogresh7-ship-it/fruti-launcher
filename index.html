@@ -2,106 +2,190 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Fruti Launcher</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23fff'/%3E%3Cpath d='M11 9h11v3.5h-7v3h6v3.5h-6V24h-4z' fill='%2305070a'/%3E%3C/svg%3E">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=3">
+  <link rel="stylesheet" href="style.css?v=4">
 </head>
 <body>
-  <div class="app" id="app">
-    <main class="main">
-      <div class="badge"><span class="badge-logo">F</span>FRUTI LAUNCHER</div>
-
-      <!-- Home -->
-      <section class="view" data-view="home">
-        <h2 class="section-title">Continue Playing</h2>
-        <div class="hero" id="hero">
-          <div class="hero-bg" id="heroBg"></div>
-          <div class="hero-shade"></div>
-          <div class="hero-content">
-            <span class="pill">FEATURED</span>
-            <h1 id="heroTitle"></h1>
-            <div class="hero-tags" id="heroTags"></div>
-          </div>
-          <div class="hero-dots" id="heroDots"></div>
-        </div>
-
-        <h2 class="section-title">Games We Recommend</h2>
-        <div class="row" id="recommend"></div>
-      </section>
-
-      <!-- Library -->
-      <section class="view" data-view="library" hidden>
-        <div class="library-head">
-          <h2 class="section-title">Library</h2>
-          <input id="search" class="search" type="search" placeholder="Search games…" autocomplete="off">
-        </div>
-        <div class="grid" id="library"></div>
-      </section>
-
-      <!-- Gifts -->
-      <section class="view" data-view="gifts" hidden>
-        <h2 class="section-title">Gifts</h2>
-        <p class="muted">Nothing here yet. Check back later.</p>
-      </section>
-
-      <!-- Settings -->
-      <section class="view" data-view="settings" hidden>
-        <h2 class="section-title">Settings</h2>
-        <div class="settings">
-          <label class="setting"><span>Open games in fullscreen</span><input type="checkbox" id="optFullscreen"></label>
-          <label class="setting"><span>Auto-rotate featured banner</span><input type="checkbox" id="optRotate" checked></label>
-          <button class="btn" id="clearHistory">Clear played history</button>
-        </div>
-      </section>
-
-      <!-- Account -->
-      <section class="view" data-view="account" hidden>
-        <h2 class="section-title">Account</h2>
-        <div class="settings">
-          <label class="setting"><span>Display name</span><input type="text" id="optName" class="text" placeholder="Player"></label>
-        </div>
-      </section>
-    </main>
-
-    <aside class="sidebar">
-      <button class="icon-btn toggle" id="toggle" aria-label="Toggle sidebar">
-        <svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
-      </button>
-      <nav class="nav" id="nav">
-        <button class="nav-item active" data-view="home"><span class="nav-icon logo">F</span><span class="label">Fruti</span></button>
-        <button class="nav-item" data-view="library"><svg viewBox="0 0 24 24"><path d="M5 4h11a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3zM5 17a3 3 0 0 1 3-3h11"/></svg><span class="label">Library</span></button>
-        <button class="nav-item" data-view="gifts"><svg viewBox="0 0 24 24"><path d="M4 11h16v9H4zM3 7h18v4H3zM12 7v13M12 7c-2-4-6-3-5 0M12 7c2-4 6-3 5 0"/></svg><span class="label">Gifts</span></button>
-        <button class="nav-item" data-view="settings"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/></svg><span class="label">Settings</span></button>
-        <button class="nav-item" data-view="account"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg><span class="label">Account</span></button>
-      </nav>
-      <div class="history">
-        <div class="history-title label">PLAYED HISTORY</div>
-        <div class="history-list" id="history"></div>
-      </div>
-      <div class="foot">
-        <div class="clock"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg><span id="clock"></span></div>
-        <div class="label total-label">TOTAL PLAYED TIME:</div>
-        <div class="label total" id="total">0m</div>
-      </div>
-    </aside>
+  <!-- Boot -->
+  <div id="boot">
+    <div class="boot-title">FRUTI</div>
+    <div class="boot-line"></div>
   </div>
 
-  <!-- Player -->
-  <div class="player" id="player" hidden>
-    <div class="player-bar">
-      <span id="playerTitle"></span>
-      <div>
-        <button class="btn" id="playerFull">Fullscreen</button>
-        <button class="btn" id="playerClose">Close</button>
+  <div id="amb"></div>
+  <canvas id="particles"></canvas>
+
+  <!-- Top pill -->
+  <div class="notch-wrap">
+    <button class="notch active" id="notch-home">
+      <span class="logo"></span><span class="notch-txt">Fruti Launcher</span>
+    </button>
+    <button class="notch" id="notch-game" hidden>
+      <span class="notch-txt" id="notch-game-title">Game</span>
+      <span class="notch-full" id="notch-full" title="Fullscreen">Fullscreen</span>
+      <span class="notch-exit" id="notch-exit">Exit</span>
+    </button>
+  </div>
+
+  <main id="wrap">
+    <!-- Home -->
+    <section class="view active" data-view="home">
+      <h2 class="sec-head" style="margin-top:0">Continue Playing</h2>
+      <div class="hero" id="hero">
+        <div class="hero-img" id="hero-img"></div>
+        <div class="hero-over">
+          <div class="h-tag" id="hero-tag">Featured</div>
+          <h1 class="h-title" id="hero-title"></h1>
+          <div class="h-stat"><span id="hero-tags"></span><span id="hero-time"></span></div>
+        </div>
+      </div>
+
+      <h2 class="sec-head">Games We Recommend</h2>
+      <div class="marquee"><div class="marquee-track" id="recommend"></div></div>
+
+      <div id="sections"></div>
+    </section>
+
+    <!-- Library -->
+    <section class="view" data-view="library">
+      <h2 class="sec-head" style="margin-top:0">Complete Library</h2>
+      <div class="search">
+        <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+        <input id="search" type="search" placeholder="Search games by name or genre..." autocomplete="off">
+      </div>
+      <div class="grid-v" id="library"></div>
+    </section>
+
+    <!-- Gifts -->
+    <section class="view" data-view="gifts">
+      <h2 class="sec-head" style="margin-top:0">Gifts &amp; Rewards</h2>
+      <div class="box soon">
+        <div class="badge-sm">Update</div>
+        <h2>Coming Soon</h2>
+        <p>Daily rewards and gifts are on the way.</p>
+      </div>
+    </section>
+
+    <!-- Settings -->
+    <section class="view" data-view="settings">
+      <h2 class="sec-head" style="margin-top:0">Settings</h2>
+      <div class="box settings">
+        <h3 class="set-title">Theme</h3>
+        <div class="set-row" id="themes"></div>
+
+        <h3 class="set-title">Particles</h3>
+        <div class="set-row" id="particle-opts"></div>
+
+        <h3 class="set-title">Gameplay</h3>
+        <div class="set-row">
+          <label class="toggle"><input type="checkbox" id="opt-fullscreen"><span>Open games in fullscreen</span></label>
+          <label class="toggle"><input type="checkbox" id="opt-rotate"><span>Auto-rotate featured banner</span></label>
+        </div>
+
+        <h3 class="set-title">Data</h3>
+        <div class="set-row">
+          <button class="btn-soft" id="clear-history">Clear Play History</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Account -->
+    <section class="view" data-view="account">
+      <h2 class="sec-head" style="margin-top:0">Profile</h2>
+      <div class="box acc">
+        <div class="badge-sm green">Local Profile</div>
+        <h2 id="acc-name-title">Player</h2>
+        <p class="muted">Your progress is saved in this browser.</p>
+        <div class="field">
+          <label for="acc-name">Display Name</label>
+          <input id="acc-name" type="text" maxlength="24" placeholder="Player" autocomplete="off">
+        </div>
+        <div class="stats">
+          <div class="stat"><small>Play Time</small><b id="acc-time">0m</b></div>
+          <div class="stat"><small>Games Played</small><b id="acc-played">0</b></div>
+          <div class="stat"><small>Favorite</small><b id="acc-fav">-</b></div>
+          <div class="stat"><small>Library</small><b id="acc-lib">0</b></div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- Sidebar -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sb-head">
+      <button id="sb-toggle" aria-label="Toggle sidebar">
+        <svg viewBox="0 0 24 24"><path d="M3 6h18M3 12h18M3 18h18"/></svg>
+      </button>
+    </div>
+    <nav class="sb-nav" id="nav"></nav>
+
+    <div class="last" id="last" hidden>
+      <div class="last-img" id="last-img"></div>
+      <div class="last-txt"><small>Last Played</small><strong id="last-name"></strong></div>
+      <button class="last-btn" id="last-btn">Play</button>
+    </div>
+
+    <div class="sb-hist">
+      <div class="sb-sec-title">Played History</div>
+      <div class="sb-hist-list" id="history"></div>
+    </div>
+
+    <div class="sb-foot">
+      <div class="sb-clock"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg><span id="clock">--:--</span></div>
+      <div class="sb-total"><small>Total Played Time:</small><b id="total">0m</b></div>
+    </div>
+  </aside>
+
+  <!-- Mobile nav -->
+  <nav id="mnav"></nav>
+
+  <!-- Game details -->
+  <div id="modal" hidden>
+    <div class="m-bg" id="m-bg"></div>
+    <button class="m-close" id="m-close" aria-label="Close">
+      <svg viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg>
+    </button>
+    <div class="m-grid">
+      <div class="m-l">
+        <div class="m-cover" id="m-cover"></div>
+        <button class="m-play" id="m-play">
+          <svg viewBox="0 0 24 24"><path d="M6 4l14 8-14 8z" fill="currentColor"/></svg>Play Now
+        </button>
+        <div class="m-stats">
+          <div class="m-rw"><small>Platform</small><span id="m-platform"></span></div>
+          <div class="m-rw"><small>Your Play Time</small><span id="m-time"></span></div>
+          <div class="m-rw"><small>Last Played</small><span id="m-last"></span></div>
+        </div>
+      </div>
+      <div class="m-r">
+        <h1 class="m-t" id="m-title"></h1>
+        <div class="m-d" id="m-genre"></div>
+        <div class="m-tgs" id="m-tags"></div>
+        <p class="m-desc" id="m-desc"></p>
+        <div class="m-req">
+          <div><h4>Controls</h4><p>Mouse and keyboard. Click the game once if it doesn't respond to keys.</p></div>
+          <div><h4>Tips</h4><p>Press Esc or use Exit in the top bar to leave. Fullscreen is in the top bar too.</p></div>
+        </div>
       </div>
     </div>
-    <iframe id="playerFrame" allow="fullscreen; autoplay; gamepad" allowfullscreen></iframe>
-    <div class="player-empty" id="playerEmpty">No URL set for this game yet. Add one in <code>games.js</code>.</div>
   </div>
 
-  <script src="games.js?v=3"></script>
-  <script src="app.js?v=3"></script>
+  <!-- Game layer -->
+  <div id="game" hidden>
+    <div id="game-load"><div class="spinner"></div><p id="game-load-title">Loading</p><small>Starting game…</small></div>
+    <div class="game-bar">
+      <button class="game-btn" id="game-full">Fullscreen</button>
+      <button class="game-btn danger" id="game-exit">Exit</button>
+    </div>
+    <iframe id="frame" title="Game" allow="fullscreen; autoplay; gamepad" allowfullscreen></iframe>
+    <div id="game-empty" hidden>No game file set for this game yet.</div>
+  </div>
+
+  <script src="games.js?v=4"></script>
+  <script src="app.js?v=4"></script>
 </body>
 </html>
