@@ -25,3 +25,7 @@ Browsers block `fetch()` for pages opened from disk (`file://`), so normal `.swf
 - Featured "Continue Playing" banner that rotates and puts recently played games first
 - Recommended row, plus a searchable Library
 - Collapsible right sidebar with played history, clock and total play time (saved in the browser)
+
+## Font
+
+Headings, titles and buttons use **Rostex** (`fonts/rostex.otf`). It's embedded in `style.css` as base64 so it also works when the page is opened from disk. Body text uses Inter.
