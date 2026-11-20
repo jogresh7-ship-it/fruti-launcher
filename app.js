@@ -130,7 +130,7 @@
     store.set("history", history);
     renderHistory();
     $("#playerTitle").textContent = g.title;
-    const src = g.swf ? "play.html?swf=" + encodeURIComponent(g.swf) : g.url;
+    const src = g.swf ? "play.html?v=3&game=" + encodeURIComponent(g.swf) : g.url;
     $("#playerFrame").src = src || "about:blank";
     $("#playerEmpty").hidden = !!src;
     $("#player").hidden = false;

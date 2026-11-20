@@ -1,20 +1,24 @@
 # Fruti Launcher
 
-A minimal static game launcher. Host the folder on any static host (GitHub Pages, Cloudflare Pages, …) or run it locally:
-
-```bash
-python3 -m http.server 8000
-```
-
-Then open http://localhost:8000. Flash games won't load if you open `index.html` straight from disk; they need to be served over http.
+A minimal game launcher made of plain HTML, CSS and JavaScript. **No server needed:** download the folder and double-click `index.html`. It also works on GitHub Pages.
 
 ## Adding games
 
 Edit `games.js`.
 
-- **Flash (.swf) games:** put the file in `games/` and set `swf: "games/<file>.swf"`. They play through [Ruffle](https://ruffle.rs) (v0.7.1), which is bundled in `ruffle/`, so no CDN is needed.
+- **Flash (.swf) games:** convert the file once, then add an entry with `swf: "<id>"`:
+
+  ```bash
+  python3 tools/embed.py swf path/to/my-game.swf my-game
+  ```
+
+  This writes `games/my-game.js`. Flash games play through [Ruffle](https://ruffle.rs) 0.7.1, which is bundled in `ruffle/`.
 - **Web games:** set `url` to the page to load instead.
 - `image` is an optional cover; games without one get a gradient from `color`.
+
+### Why games are `.js` files
+
+Browsers block `fetch()` for pages opened from disk (`file://`), so normal `.swf` and `.wasm` files can't load without a server. Script tags are allowed, though, so each game and the Ruffle engine are stored as base64 inside `.js` files and loaded that way.
 
 ## Features
 
