@@ -14,7 +14,7 @@ Edit `games.js`.
 
   This writes `games/my-game.js`. Flash games play through [Ruffle](https://ruffle.rs) 0.7.1, which is bundled in `ruffle/`.
 - **Web games:** set `url` to the page to load instead.
-- `image` is an optional cover; games without one get a gradient from `color`.
+- `image` is the cover picture. Covers are screenshots of each game, saved in `covers/` as JPGs. Games without one get a gradient from `color`.
 
 ### Why games are `.js` files
 

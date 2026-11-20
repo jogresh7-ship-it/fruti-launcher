@@ -1,6 +1,6 @@
 (() => {
   "use strict";
-  const VERSION = "4";
+  const VERSION = "5";
   const games = window.FRUTI_GAMES || [];
   const byId = Object.fromEntries(games.map((g) => [g.id, g]));
   const $ = (s) => document.querySelector(s);
@@ -34,8 +34,16 @@
   const bg = (g) => g.image ? `url("${g.image}")` : `linear-gradient(135deg, ${g.color?.[0] || "#333"}, ${g.color?.[1] || "#111"})`;
   const art = (g) => {
     const a = h("div", "art");
-    a.style.backgroundImage = bg(g);
-    if (!g.image) a.appendChild(h("div", "art-mark", esc(initials(g.title))));
+    if (g.image) {
+      // Screenshot shown whole, on top of a blurred copy that fills the space
+      a.classList.add("img");
+      const blur = h("div", "art-blur"), fg = h("div", "art-fg");
+      blur.style.backgroundImage = fg.style.backgroundImage = bg(g);
+      a.append(blur, fg);
+    } else {
+      a.style.backgroundImage = bg(g);
+      a.appendChild(h("div", "art-mark", esc(initials(g.title))));
+    }
     return a;
   };
 
@@ -115,7 +123,7 @@
   const SECTIONS = [
     ["Strategy & Tower Defense", (g) => g.tags.some((t) => /strategy|tower/i.test(t))],
     ["Action & Shooter", (g) => g.tags.some((t) => /action|shooter|zombie/i.test(t))],
-    ["Puzzle & Stealth", (g) => g.tags.some((t) => /puzzle|stealth/i.test(t))],
+    ["Puzzle & Board", (g) => g.tags.some((t) => /puzzle|stealth|board|physics/i.test(t))],
     ["Quick Play Arcade", (g) => g.tags.some((t) => /arcade|runner|platform/i.test(t))],
     ["All Games", () => true],
   ];

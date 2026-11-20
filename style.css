@@ -415,3 +415,19 @@ input, button { font-family: inherit; font-size-adjust: inherit; }
   font-kerning: none;
   font-feature-settings: "kern" 0;
 }
+
+/* Cover screenshots */
+.art.img { background: #05070a; }
+.art-blur, .art-fg { position: absolute; background-position: center; background-repeat: no-repeat; }
+.art-blur { inset: -30px; background-size: cover; filter: blur(22px) brightness(.55) saturate(1.2); }
+.art-fg { inset: 0; background-size: contain; }
+.card.h .art-fg { inset: 6px; }
+.hero .art-fg { left: 35%; background-position: right center; }
+.hero .art-blur { filter: blur(30px) brightness(.5) saturate(1.2); }
+.c-icon i { background-position: center; }
+.m-cover { aspect-ratio: 3/4; }
+.m-cover .art-fg { inset: 10px; }
+@media (max-width: 860px) {
+  .hero .art-fg { left: 0; background-position: center; opacity: .55; }
+}
+.card .art.img { opacity: .92; }
