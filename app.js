@@ -1,6 +1,6 @@
 (() => {
   "use strict";
-  const VERSION = "6";
+  const VERSION = "7";
   const games = window.FRUTI_GAMES || [];
   const byId = Object.fromEntries(games.map((g) => [g.id, g]));
   const $ = (s) => document.querySelector(s);
@@ -284,6 +284,23 @@
     $("#themes").appendChild(s);
   });
 
+  const P_ICONS = {
+    none: `<circle cx="12" cy="12" r="10"/><path d="M4.93 4.93l14.14 14.14"/>`,
+    snow: `<path d="M12 2v20M2 12h20M5 5l14 14M19 5L5 19"/>`,
+    rain: `<path d="M16 13v8M8 13v8M12 15v8M20 16.58A5 5 0 0 0 18 7h-1.26A8 8 0 1 0 4 15.25"/>`,
+    stars: `<path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01z"/>`,
+    bubbles: `<circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="4"/>`,
+    fireflies: `<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/>`,
+    nexus: `<circle cx="6" cy="6" r="3"/><circle cx="18" cy="18" r="3"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="6" r="3"/><path d="M8 8l8 8M8 16l8-8"/>`,
+  };
+  Object.entries(P_ICONS).forEach(([name, path]) => {
+    const c = h("button", "p-card", `<svg viewBox="0 0 24 24">${path}</svg><span>${name[0].toUpperCase() + name.slice(1)}</span>`);
+    c.dataset.p = name;
+    c.onclick = () => { settings.particles = name; save(); particles.set(name); markParticles(); };
+    $("#particle-opts").appendChild(c);
+  });
+  const markParticles = () => document.querySelectorAll(".p-card").forEach((c) => c.classList.toggle("active", c.dataset.p === settings.particles));
+
   // ---------- Particles ----------
   const particles = (() => {
     const cv = $("#particles"), ctx = cv.getContext("2d");
@@ -331,6 +348,7 @@
 
   // ---------- Init ----------
   applyTheme();
+  markParticles();
   particles.set(settings.particles);
   show("home");
   renderHome(); renderLibrary(); renderSidebar();

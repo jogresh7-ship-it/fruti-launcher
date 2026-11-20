@@ -25,7 +25,7 @@ Browsers block `fetch()` for pages opened from disk (`file://`), so normal `.swf
 - Featured "Continue Playing" banner that rotates and puts recently played games first
 - Recommended row, plus a searchable Library
 - Collapsible right sidebar with Fruti, Library and Settings, plus played history and a clock
-- Settings: theme color
+- Settings: theme color and background particles (none, snow, rain, stars, bubbles, fireflies, nexus)
 
 ## Fonts
 
