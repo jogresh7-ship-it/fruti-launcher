@@ -24,11 +24,6 @@
     <button class="notch active" id="notch-home">
       <span class="logo"></span><span class="notch-txt">Fruti Launcher</span>
     </button>
-    <button class="notch" id="notch-game" hidden>
-      <span class="notch-txt" id="notch-game-title">Game</span>
-      <span class="notch-full" id="notch-full" title="Fullscreen">Fullscreen</span>
-      <span class="notch-exit" id="notch-exit">Exit</span>
-    </button>
   </div>
 
   <main id="wrap">
@@ -128,24 +123,13 @@
         <p class="m-desc" id="m-desc"></p>
         <div class="m-req">
           <div><h4>Controls</h4><p>Mouse and keyboard. Click the game once if it doesn't respond to keys.</p></div>
-          <div><h4>Tips</h4><p>Press Esc or use Exit in the top bar to leave. Fullscreen is in the top bar too.</p></div>
+          <div><h4>Tips</h4><p>The game opens in a new tab. Close the tab when you are done. Press F11 for fullscreen.</p></div>
         </div>
       </div>
     </div>
   </div>
 
-  <!-- Game layer -->
-  <div id="game" hidden>
-    <div id="game-load"><div class="spinner"></div><p id="game-load-title">Loading</p><small>Starting game…</small></div>
-    <div class="game-bar">
-      <button class="game-btn" id="game-full">Fullscreen</button>
-      <button class="game-btn danger" id="game-exit">Exit</button>
-    </div>
-    <iframe id="frame" title="Game" allow="fullscreen; autoplay; gamepad" allowfullscreen></iframe>
-    <div id="game-empty" hidden>No game file set for this game yet.</div>
-  </div>
-
   <script src="games.js?v=6"></script>
-  <script src="app.js?v=7"></script>
+  <script src="app.js?v=8"></script>
 </body>
 </html>

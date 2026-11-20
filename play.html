@@ -43,6 +43,7 @@
       });
     };
   </script>
+  <script src="games.js"></script>
   <!-- Ruffle 0.7.1, Flash Player emulator (https://ruffle.rs), bundled in ruffle/ -->
   <script src="ruffle/ruffle.js"></script>
   <script>
@@ -52,6 +53,27 @@
       var id = new URLSearchParams(location.search).get("game");
       if (!id || !/^[\w-]+$/.test(id)) return msg("No game selected.");
       if (!window.RufflePlayer) return msg("Could not load the Flash emulator.");
+
+      // Tab title + icon from the game list
+      var g = (window.FRUTI_GAMES || []).filter(function (x) { return x.swf === id; })[0];
+      if (g) {
+        document.title = g.title + " - Fruti";
+        if (g.image) { var l = document.createElement("link"); l.rel = "icon"; l.href = g.image; document.head.appendChild(l); }
+      }
+
+      // Save play time (read by the launcher tab)
+      var gid = g ? g.id : id, last = Date.now();
+      function saveTime() {
+        var now = Date.now(), add = now - last; last = now;
+        try {
+          var t = JSON.parse(localStorage.getItem("fruti:times") || "{}");
+          t[gid] = (t[gid] || 0) + add;
+          localStorage.setItem("fruti:times", JSON.stringify(t));
+        } catch (e) {}
+      }
+      setInterval(function () { if (!document.hidden) saveTime(); }, 15000);
+      addEventListener("pagehide", saveTime);
+      document.addEventListener("visibilitychange", function () { if (document.hidden) saveTime(); else last = Date.now(); });
 
       window.RufflePlayer.config = {
         autoplay: "on",

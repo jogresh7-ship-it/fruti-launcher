@@ -1,6 +1,6 @@
 (() => {
   "use strict";
-  const VERSION = "7";
+  const VERSION = "8";
   const games = window.FRUTI_GAMES || [];
   const byId = Object.fromEntries(games.map((g) => [g.id, g]));
   const $ = (s) => document.querySelector(s);
@@ -67,7 +67,6 @@
   });
   function show(id) {
     tab = id;
-    hideGame();
     document.querySelectorAll(".view").forEach((v) => v.classList.toggle("active", v.dataset.view === id));
     document.querySelectorAll("[data-tab]").forEach((b) => b.classList.toggle("active", b.dataset.tab === id));
     $("#wrap").scrollTop = 0;
@@ -112,7 +111,7 @@
   }
   function startRotate() {
     clearInterval(heroTimer);
-    if (settings.rotate) heroTimer = setInterval(() => { if (current) return; heroIdx++; renderHero(); }, 7000);
+    if (settings.rotate) heroTimer = setInterval(() => { heroIdx++; renderHero(); }, 7000);
   }
 
   // ---------- Home lists ----------
@@ -195,78 +194,27 @@
   $("#m-close").onclick = closeModal;
   $("#m-play").onclick = () => { const g = modalGame; closeModal(); if (g) play(g); };
 
-  // ---------- Game ----------
-  let current = null, playStart = 0;
+  // ---------- Game: opens in its own browser tab ----------
   function play(g) {
-    if (current && current.id !== g.id) stopGame();
     closeModal();
-    if (!current) {
-      current = g;
-      playStart = Date.now();
-      history = [{ id: g.id, at: Date.now() }, ...history.filter((x) => x.id !== g.id)].slice(0, 40);
-      store.set("history", history);
-      const src = g.swf ? `play.html?v=${VERSION}&game=${encodeURIComponent(g.swf)}` : g.url;
-      $("#game-empty").hidden = !!src;
-      $("#game-load-title").textContent = g.title;
-      $("#game-load").classList.remove("out");
-      const f = $("#frame");
-      f.onload = () => setTimeout(() => $("#game-load").classList.add("out"), 400);
-      f.src = src || "about:blank";
-      $("#notch-game-title").textContent = g.title;
-      heroIdx = 0; renderHero(); renderSidebar();
-    }
-    showGame();
-    if (settings.fullscreen) fullscreen();
+    const src = g.swf ? `play.html?v=${VERSION}&game=${encodeURIComponent(g.swf)}` : g.url;
+    if (!src) { alert("No game file set for " + g.title + " yet."); return; }
+    history = [{ id: g.id, at: Date.now() }, ...history.filter((x) => x.id !== g.id)].slice(0, 40);
+    store.set("history", history);
+    window.open(src, "_blank");
+    heroIdx = 0; renderHero(); renderSidebar();
   }
-  function showGame() {
-    if (!current) return;
-    $("#game").hidden = false;
-    document.body.classList.add("playing");
-    $("#notch-game").hidden = false;
-    $("#notch-game").classList.add("active");
-    $("#notch-home").classList.remove("active");
-    setTimeout(() => $("#frame").focus(), 50);
-  }
-  function hideGame() {
-    $("#game").hidden = true;
-    document.body.classList.remove("playing");
-    $("#notch-game").classList.remove("active");
-    $("#notch-home").classList.add("active");
-  }
-  function stopGame() {
-    if (!current) return;
-    times[current.id] = (times[current.id] || 0) + (Date.now() - playStart);
-    store.set("times", times);
-    current = null;
-    $("#frame").src = "about:blank";
-    $("#notch-game").hidden = true;
-    if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
-    hideGame();
-    heroIdx = 0;
+  // play.html saves play time; refresh when it changes (other tab) or when coming back to this tab
+  const reloadStats = () => {
+    times = store.get("times", {});
+    history = store.get("history", history);
     renderHome(); renderLibrary(); renderSidebar();
-  }
-  function fullscreen() { $("#game").requestFullscreen?.().catch(() => {}); }
-  // Save play time periodically so closing the tab doesn't lose it
-  setInterval(() => {
-    if (!current) return;
-    const now = Date.now();
-    times[current.id] = (times[current.id] || 0) + (now - playStart);
-    playStart = now;
-    store.set("times", times);
-  }, 15000);
+  };
+  addEventListener("storage", (e) => { if (e.key === "fruti:times" || e.key === "fruti:history") reloadStats(); });
+  addEventListener("focus", reloadStats);
 
   $("#notch-home").onclick = () => show(tab);
-  $("#notch-game").onclick = (e) => { if (e.target.id !== "notch-exit" && e.target.id !== "notch-full") showGame(); };
-  $("#notch-full").onclick = (e) => { e.stopPropagation(); showGame(); fullscreen(); };
-  $("#notch-exit").onclick = (e) => { e.stopPropagation(); stopGame(); };
-  $("#game-exit").onclick = stopGame;
-  $("#game-full").onclick = fullscreen;
-  document.addEventListener("fullscreenchange", () => document.body.classList.toggle("in-fullscreen", !!document.fullscreenElement));
-  document.addEventListener("keydown", (e) => {
-    if (e.key !== "Escape") return;
-    if (!$("#modal").hidden) closeModal();
-    else if (current && !$("#game").hidden && !document.fullscreenElement) hideGame();
-  });
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !$("#modal").hidden) closeModal(); });
 
   // ---------- Settings ----------
   const THEMES = {
@@ -315,7 +263,7 @@
     const accent = () => getComputedStyle(document.documentElement).getPropertyValue("--accent").trim() || "#22c55e";
     function frame() {
       raf = requestAnimationFrame(frame);
-      if (document.hidden || document.body.classList.contains("playing")) return;
+      if (document.hidden) return;
       ctx.clearRect(0, 0, W, H);
       const col = accent();
       for (const p of ps) {
