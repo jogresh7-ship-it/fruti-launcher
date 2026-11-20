@@ -28,7 +28,7 @@ Browsers block `fetch()` for pages opened from disk (`file://`), so normal `.swf
 
 ## Fonts
 
-- **Rostex** (`fonts/rostex.otf`): only the section headings, such as "Continue Playing", "Games We Recommend" and "Strategy & Tower Defense".
+- **Rostex** (`fonts/rostex.otf`): the "FRUTI" boot screen and the section headings, such as "Continue Playing", "Games We Recommend" and "Strategy & Tower Defense".
 - **Easy Noise** (`fonts/easy-noise.ttf`): all other text, including the sidebar, top bar, cards and game pages.
 
 Both are embedded in `style.css` as base64, so they also work when the page is opened from disk.

@@ -408,3 +408,10 @@ input, button { font-family: inherit; font-size-adjust: inherit; }
 .sb-sec-title { font-size: 12px; }
 .sb-hist-name, .last-txt strong { font-size: 14px; }
 .sb-clock, .sb-total b { font-size: 14px; }
+/* Boot screen "FRUTI" uses Rostex, like before */
+.boot-title {
+  font-family: var(--display);
+  font-size-adjust: none;
+  font-kerning: none;
+  font-feature-settings: "kern" 0;
+}
