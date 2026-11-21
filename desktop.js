@@ -46,7 +46,6 @@
 
   const ICON = {
     library: `<svg viewBox="0 0 24 24"><path d="M4 4h4v16H4zM10 4h4v16h-4z"/><path d="m16 5 3.8-1 3 15.4-3.8 1z"/></svg>`,
-    recent: `<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>`,
     fav: `<svg viewBox="0 0 24 24"><path d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1 6.2L12 17.3 6.5 20.2l1-6.2L3 9.6l6.2-.9z"/></svg>`,
     emulators: `<svg viewBox="0 0 24 24"><path d="M6 11h4M8 9v4M15 12h.01M18 10h.01"/><path d="M17.3 5H6.7a4 4 0 0 0-4 3.6L2 15.5A3 3 0 0 0 7.2 18l1.3-2h7l1.3 2a3 3 0 0 0 5.2-2.5l-.7-6.9A4 4 0 0 0 17.3 5z"/></svg>`,
     stats: `<svg viewBox="0 0 24 24"><path d="M21 12A9 9 0 1 1 12 3v9z"/><path d="M15 3.5A9 9 0 0 1 20.5 9H15z"/></svg>`,
@@ -68,33 +67,24 @@
   const platOf = (g) => g.rom ? (g.console || "n64") : g.swf ? "flash" : "web";
   const badge = (g) => { const p = PLAT[platOf(g)]; return `<span class="badge">${p.icon}${esc(p.tag)}</span>`; };
 
-  // ---------- Rail ----------
-  const RAIL = [
+  // ---------- Page buttons (top right) ----------
+  const PAGES = [
     ["library", "Library", ICON.library],
-    ["recent", "Recently played", ICON.recent],
-    ["favs", "Favorites", ICON.fav],
     ["emulators", "Emulators", ICON.emulators],
     ["stats", "Statistics", ICON.stats],
     ["settings", "Settings", ICON.settings],
   ];
-  let scope = "all"; // all | recent | favs
-  RAIL.forEach(([id, label, icon]) => {
-    const b = h("button", "rail-btn", icon + `<span class="rail-tip">${label}</span>`);
-    b.dataset.rail = id; b.setAttribute("aria-label", label);
-    b.onclick = () => {
-      if (id === "library" || id === "recent" || id === "favs") { scope = id === "library" ? "all" : id; showPage("library"); renderLibrary(); }
-      else showPage(id);
-    };
-    if (id === "settings") $("#rail").appendChild(h("div", "rail-spacer"));
-    $("#rail").appendChild(b);
+  PAGES.forEach(([id, label, icon]) => {
+    const b = h("button", "tb-btn pg-btn", icon);
+    b.dataset.pg = id; b.title = label; b.setAttribute("aria-label", label);
+    b.onclick = () => { showPage(id); if (id === "library") renderLibrary(); };
+    $("#pages").appendChild(b);
   });
-  $(".rail-logo").onclick = () => { scope = "all"; showPage("library"); renderLibrary(); };
 
   function showPage(id) {
     ui.page = id; saveUi();
     $$(".page").forEach((p) => p.classList.toggle("active", p.dataset.page === id));
-    const railId = id === "library" ? (scope === "all" ? "library" : scope) : id;
-    $$(".rail-btn").forEach((b) => b.classList.toggle("active", b.dataset.rail === railId));
+    $$(".pg-btn").forEach((b) => b.classList.toggle("active", b.dataset.pg === id));
     document.body.dataset.page = id;
     if (id === "stats") renderStats();
   }
@@ -105,16 +95,14 @@
     let list = games.filter((g) =>
       (!q || g.title.toLowerCase().includes(q) || g.tags.some((t) => t.toLowerCase().includes(q))) &&
       (ui.platform === "all" || platOf(g) === ui.platform) &&
-      (!ui.favOnly || favs.has(g.id)) &&
-      (scope !== "favs" || favs.has(g.id)) &&
-      (scope !== "recent" || lastAt(g.id)));
+      (!ui.favOnly || favs.has(g.id)));
     const by = {
       name: (a, b) => a.title.localeCompare(b.title),
       last: (a, b) => lastAt(b.id) - lastAt(a.id) || a.title.localeCompare(b.title),
       time: (a, b) => (times[b.id] || 0) - (times[a.id] || 0) || a.title.localeCompare(b.title),
       platform: (a, b) => PLAT[platOf(a)].name.localeCompare(PLAT[platOf(b)].name) || a.title.localeCompare(b.title),
     }[ui.sort] || ((a, b) => a.title.localeCompare(b.title));
-    return list.sort(scope === "recent" ? (a, b) => lastAt(b.id) - lastAt(a.id) : by);
+    return list.sort(by);
   }
   function grouped(list) {
     if (ui.group === "none") return [[null, list]];
@@ -311,7 +299,7 @@
   };
   $("#filter-chip").onclick = clearFilters;
   function clearFilters() { $("#search").value = ""; ui.platform = "all"; ui.favOnly = false; saveUi(); renderLibrary(); }
-  document.addEventListener("click", (e) => { if (e.target.closest("[data-clear]")) { scope = "all"; showPage("library"); clearFilters(); } });
+  document.addEventListener("click", (e) => { if (e.target.closest("[data-clear]")) { showPage("library"); clearFilters(); } });
 
   // Small dropdown menus
   const menu = $("#menu");
