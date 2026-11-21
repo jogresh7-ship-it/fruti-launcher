@@ -4,24 +4,26 @@ A minimal game launcher made of plain HTML, CSS and JavaScript. **No server need
 
 ## Adding games
 
-Edit `games.js`.
+Edit `games.js`. Each game has one source:
 
-- **Flash (.swf) games:** convert the file once, then add an entry with `swf: "<id>"`:
+- **Console ROMs from the CDN** (`cdn:`): the path of the ROM inside the [rom-games](https://github.com/jogresh7-ship-it/rom-games) repo, plus `console:`. ROMs download from `FRUTI_ROM_SOURCES` at the top of `games.js`: jsDelivr first, then GitHub raw. jsDelivr refuses files over 20 MB, so big ROMs (Mario Kart DS, Ocarina of Time) come from GitHub raw automatically.
+- **Embedded console ROMs** (`rom:`): convert once with `python3 tools/embed.py rom path/to/my-game.nds my-game nds`, then add `rom: "my-game", console: "nds"`.
+- **Flash (.swf) games** (`swf:`): convert once with `python3 tools/embed.py swf path/to/my-game.swf my-game`, then add `swf: "my-game"`. Played with [Ruffle](https://ruffle.rs) 0.7.1, bundled in `ruffle/`.
+- **Web games** (`url:`): the page to open.
 
-  ```bash
-  python3 tools/embed.py swf path/to/my-game.swf my-game
-  ```
+Leave the source empty (`""`) to list a game that isn't set up yet. It shows a **SETUP** badge and explains what's missing.
 
-  This writes `games/my-game.js`. Flash games play through [Ruffle](https://ruffle.rs) 0.7.1, which is bundled in `ruffle/`.
-- **Console games** (Nintendo DS, N64, GBA, Game Boy / Color, SNES, NES, Sega Genesis, PlayStation): each console has its own tab with a **Play a ROM** box that plays a ROM straight from your computer (any size, nothing is uploaded). To list a game permanently, convert it and add an entry with `rom: "<id>", console: "<console>"`:
+Consoles are listed in `consoles.js`. Games play through [EmulatorJS](https://github.com/EmulatorJS/EmulatorJS) 4.2.3, bundled in `emulatorjs/` (GPL-3.0) with the melonDS, mupen64plus_next, mGBA, Gambatte, Snes9x, FCEUmm, Genesis Plus GX and PCSX ReARMed cores. GameCube, Switch and Mobile are listed with `emu: false` because no browser core exists for them. Each console page also has **Play a ROM file…** to play a ROM straight from your computer (nothing is uploaded).
 
-  ```bash
-  python3 tools/embed.py rom path/to/my-game.nds my-game nds
-  ```
+### Artwork
 
-  Consoles are listed in `consoles.js`. Games play through [EmulatorJS](https://github.com/EmulatorJS/EmulatorJS) 4.2.3, bundled in `emulatorjs/` (GPL-3.0) with the melonDS, mupen64plus_next, mGBA, Gambatte, Snes9x, FCEUmm, Genesis Plus GX and PCSX ReARMed cores.
-- **Web games:** set `url` to the page to load instead.
-- `image` is the cover picture. Covers are screenshots of each game, saved in `covers/` as JPGs. Games without one get a gradient from `color`.
+Put a cover in `covers/<id>.jpg` (`<id>` = the game id), set `image:` and run:
+
+```bash
+python3 tools/make-art.py
+```
+
+This builds `art/<id>.webp` (square tile) and `art/<id>-hero.webp` (wide banner) with the blur baked in, so the launcher never blurs anything while it runs. Console covers are box art from [libretro-thumbnails](https://github.com/libretro-thumbnails). Games without a cover get a gradient from `color`.
 
 ### Why games are `.js` files
 
@@ -29,15 +31,16 @@ Browsers block `fetch()` for pages opened from disk (`file://`), so normal `.swf
 
 ## Features
 
-- Featured "Continue Playing" banner that rotates and puts recently played games first
-- Recommended row, plus a searchable Library
-- Games open in their own browser tab, titled with the game name
-- Collapsible right sidebar with Fruti, Library, Flash, a tab per console and Settings, plus played history and a clock
-- Settings: theme color and background particles (none, snow, rain, stars, bubbles, fireflies, nexus)
+- Left navigation rail (bottom bar on phones): Home, Library, Emulator, Flash, Settings
+- Home: rotating hero banner (recently played first), then Continue playing, Console classics, Flash, Web and genre rows
+- Library: search (press `/`), filter by Consoles, Flash, Web or a single console, and sort by name, recently played or most played
+- Emulator: a tile per console with game counts, and a page per console
+- Details sheet with play time and last played; games open in their own browser tab
+- Arrow keys move between game cards; Esc closes the details sheet
+- Settings: accent color, background effect (off by default), hero rotation, reduce motion, ROM sources, clear play data
+- History and play time use the same `localStorage` keys as before, so nothing is lost
 
 ## Fonts
 
-- **Rostex** (`fonts/rostex.otf`): the "FRUTI" boot screen and the section headings, such as "Continue Playing", "Games We Recommend" and "Strategy & Tower Defense".
-- **Easy Noise** (`fonts/easy-noise.ttf`): all other text, including the sidebar, top bar, cards and game pages.
-
-Both are embedded in `style.css` as base64, so they also work when the page is opened from disk.
+- **Rostex** (`fonts/rostex.otf`): page titles, hero titles and game titles. Embedded in `fonts.css` as base64, so it also works when the page is opened from disk.
+- **Inter** (Google Fonts) for everything else, falling back to the system font offline.

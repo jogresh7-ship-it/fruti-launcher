@@ -3,140 +3,160 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="dark">
   <title>Fruti Launcher</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23fff'/%3E%3Cpath d='M11 9h11v3.5h-7v3h6v3.5h-6V24h-4z' fill='%2305070a'/%3E%3C/svg%3E">
   <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css?v=17">
+  <link rel="stylesheet" href="fonts.css?v=1">
+  <link rel="stylesheet" href="style.css?v=20">
 </head>
 <body>
-  <!-- Boot -->
-  <div id="boot">
-    <div class="boot-title">FRUTI</div>
-    <div class="boot-line"></div>
-  </div>
+  <canvas id="fx" aria-hidden="true"></canvas>
 
-  <div id="amb"></div>
-  <canvas id="particles"></canvas>
+  <!-- Navigation: left rail on desktop, bottom bar on phones -->
+  <nav class="rail" id="rail" aria-label="Main">
+    <button class="brand" data-go="home" aria-label="Fruti home"><span class="brand-mark">F</span></button>
+    <div class="rail-items" id="rail-items"></div>
+    <div class="rail-clock" id="clock">--:--</div>
+  </nav>
 
-  <!-- Top pill -->
-  <div class="notch-wrap">
-    <button class="notch active" id="notch-home">
-      <span class="logo"></span><span class="notch-txt">Fruti Launcher</span>
-    </button>
-  </div>
-
-  <main id="wrap">
+  <main id="main" tabindex="-1">
     <!-- Home -->
-    <section class="view active" data-view="home">
-      <h2 class="sec-head" style="margin-top:0">Continue Playing</h2>
+    <section class="view" data-view="home">
       <div class="hero" id="hero">
-        <div class="hero-img" id="hero-img"></div>
-        <div class="hero-over">
-          <div class="h-tag" id="hero-tag">Featured</div>
-          <h1 class="h-title" id="hero-title"></h1>
-          <div class="h-stat"><span id="hero-tags"></span><span id="hero-time"></span></div>
+        <div class="hero-bg" id="hero-bg-a"></div>
+        <div class="hero-bg" id="hero-bg-b"></div>
+        <div class="hero-shade"></div>
+        <div class="hero-body">
+          <div class="hero-kicker" id="hero-kicker"></div>
+          <h1 class="hero-title" id="hero-title"></h1>
+          <p class="hero-desc" id="hero-desc"></p>
+          <div class="hero-actions">
+            <button class="btn btn-play" id="hero-play"><svg viewBox="0 0 24 24"><path d="M7 4.5v15l12-7.5z" fill="currentColor" stroke="none"/></svg>Play</button>
+            <button class="btn btn-ghost" id="hero-info">Details</button>
+          </div>
         </div>
+        <div class="hero-dots" id="hero-dots"></div>
       </div>
-
-      <h2 class="sec-head">Games We Recommend</h2>
-      <div class="marquee"><div class="marquee-track" id="recommend"></div></div>
-
-      <div id="sections"></div>
+      <div id="rows"></div>
     </section>
 
     <!-- Library -->
-    <section class="view" data-view="library">
-      <h2 class="sec-head" style="margin-top:0">Complete Library</h2>
-      <div class="search">
-        <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
-        <input id="search" type="search" placeholder="Search games by name or genre..." autocomplete="off">
+    <section class="view" data-view="library" hidden>
+      <header class="page-head">
+        <h1>Library</h1>
+        <span class="count" id="lib-count"></span>
+      </header>
+      <div class="toolbar">
+        <label class="search">
+          <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+          <input id="search" type="search" placeholder="Search games" autocomplete="off" spellcheck="false">
+          <kbd>/</kbd>
+        </label>
+        <select id="sort" aria-label="Sort">
+          <option value="az">A–Z</option>
+          <option value="recent">Recently played</option>
+          <option value="most">Most played</option>
+        </select>
       </div>
-      <div class="grid-v" id="library"></div>
+      <div class="chips" id="lib-chips"></div>
+      <div class="grid" id="lib-grid"></div>
+    </section>
+
+    <!-- Emulator -->
+    <section class="view" data-view="emulator" hidden>
+      <div id="emu-home">
+        <header class="page-head">
+          <h1>Emulator</h1>
+          <span class="count">EmulatorJS 4.2.3</span>
+        </header>
+        <div class="consoles" id="consoles"></div>
+        <h2 class="row-title">All console games</h2>
+        <div class="grid" id="emu-all"></div>
+      </div>
+      <div id="emu-console" hidden>
+        <header class="page-head">
+          <button class="back" id="emu-back" aria-label="Back to consoles"><svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg></button>
+          <h1 id="emu-name"></h1>
+          <span class="count" id="emu-count"></span>
+          <button class="btn btn-ghost sm push" id="emu-file">Play a ROM file…</button>
+        </header>
+        <p class="note" id="emu-note" hidden></p>
+        <div class="grid" id="emu-grid"></div>
+      </div>
     </section>
 
     <!-- Flash -->
-    <section class="view" data-view="flash">
-      <h2 class="sec-head" style="margin-top:0">Flash Games</h2>
-      <div class="grid-v" id="flash-grid"></div>
+    <section class="view" data-view="flash" hidden>
+      <header class="page-head">
+        <h1>Flash</h1>
+        <span class="count" id="flash-count"></span>
+      </header>
+      <p class="note">Played with Ruffle, the Flash Player emulator. Click inside a game once if it ignores the keyboard.</p>
+      <div class="grid" id="flash-grid"></div>
     </section>
 
     <!-- Settings -->
-    <section class="view" data-view="settings">
-      <h2 class="sec-head" style="margin-top:0">Settings</h2>
-      <div class="box settings">
-        <h3 class="set-title">Theme Color</h3>
-        <div class="set-row" id="themes"></div>
-
-        <h3 class="set-title">Particles</h3>
-        <div class="set-row" id="particle-opts"></div>
-
+    <section class="view" data-view="settings" hidden>
+      <header class="page-head"><h1>Settings</h1></header>
+      <div class="settings">
+        <div class="set-card">
+          <h3>Accent color</h3>
+          <div class="swatches" id="swatches"></div>
+        </div>
+        <div class="set-card">
+          <h3>Background effect</h3>
+          <div class="seg" id="fx-opts"></div>
+        </div>
+        <div class="set-card">
+          <h3>Home</h3>
+          <label class="toggle"><span>Rotate featured games</span><input type="checkbox" id="opt-rotate"><i></i></label>
+          <label class="toggle"><span>Reduce motion</span><input type="checkbox" id="opt-calm"><i></i></label>
+        </div>
+        <div class="set-card">
+          <h3>ROM sources</h3>
+          <p class="muted">Console ROMs are downloaded from these hosts, in order. Edit <code>FRUTI_ROM_SOURCES</code> in <code>games.js</code> to change them.</p>
+          <ol class="sources" id="sources"></ol>
+        </div>
+        <div class="set-card">
+          <h3>Play data</h3>
+          <p class="muted" id="data-sum"></p>
+          <button class="btn btn-danger sm" id="clear-data">Clear history and play time</button>
+        </div>
       </div>
     </section>
-
   </main>
 
-  <!-- Sidebar -->
-  <aside class="sidebar" id="sidebar">
-    <div class="sb-head">
-      <button id="sb-toggle" aria-label="Toggle sidebar">
-        <svg viewBox="0 0 24 24"><path d="M3 6h18M3 12h18M3 18h18"/></svg>
-      </button>
-    </div>
-    <nav class="sb-nav" id="nav"></nav>
-
-    <div class="last" id="last" hidden>
-      <div class="last-img" id="last-img"></div>
-      <div class="last-txt"><small>Last Played</small><strong id="last-name"></strong></div>
-      <button class="last-btn" id="last-btn">Play</button>
-    </div>
-
-    <div class="sb-hist">
-      <div class="sb-sec-title">Played History</div>
-      <div class="sb-hist-list" id="history"></div>
-    </div>
-
-    <div class="sb-foot">
-      <div class="sb-clock"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg><span id="clock">--:--</span></div>
-    </div>
-  </aside>
-
-  <!-- Mobile nav -->
-  <nav id="mnav"></nav>
-
   <!-- Game details -->
-  <div id="modal" hidden>
-    <div class="m-bg" id="m-bg"></div>
-    <button class="m-close" id="m-close" aria-label="Close">
-      <svg viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg>
-    </button>
-    <div class="m-grid">
-      <div class="m-l">
-        <div class="m-cover" id="m-cover"></div>
-        <button class="m-play" id="m-play">
-          <svg viewBox="0 0 24 24"><path d="M6 4l14 8-14 8z" fill="currentColor"/></svg>Play Now
-        </button>
-        <div class="m-stats">
-          <div class="m-rw"><small>Platform</small><span id="m-platform"></span></div>
-          <div class="m-rw"><small>Your Play Time</small><span id="m-time"></span></div>
-          <div class="m-rw"><small>Last Played</small><span id="m-last"></span></div>
-        </div>
+  <div class="sheet" id="sheet" hidden>
+    <div class="sheet-scrim" id="sheet-scrim"></div>
+    <div class="sheet-panel" role="dialog" aria-modal="true" aria-labelledby="d-title">
+      <div class="sheet-hero" id="d-hero">
+        <button class="sheet-close" id="d-close" aria-label="Close"><svg viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
       </div>
-      <div class="m-r">
-        <h1 class="m-t" id="m-title"></h1>
-        <div class="m-d" id="m-genre"></div>
-        <div class="m-tgs" id="m-tags"></div>
-        <p class="m-desc" id="m-desc"></p>
-        <div class="m-req">
-          <div><h4>Controls</h4><p>Mouse and keyboard. Click the game once if it doesn't respond to keys.</p></div>
-          <div><h4>Tips</h4><p>The game opens in a new tab. Close the tab when you are done. Press F11 for fullscreen.</p></div>
+      <div class="sheet-body">
+        <div class="d-kicker" id="d-kicker"></div>
+        <h2 class="d-title" id="d-title"></h2>
+        <div class="d-tags" id="d-tags"></div>
+        <div class="d-actions">
+          <button class="btn btn-play" id="d-play"><svg viewBox="0 0 24 24"><path d="M7 4.5v15l12-7.5z" fill="currentColor" stroke="none"/></svg>Play</button>
         </div>
+        <p class="d-setup" id="d-setup" hidden></p>
+        <p class="d-desc" id="d-desc"></p>
+        <dl class="d-stats">
+          <div><dt>Platform</dt><dd id="d-platform"></dd></div>
+          <div><dt>Play time</dt><dd id="d-time"></dd></div>
+          <div><dt>Last played</dt><dd id="d-last"></dd></div>
+        </dl>
+        <p class="d-tip">Games open in a new tab. Press F11 for fullscreen and close the tab when you're done.</p>
       </div>
     </div>
   </div>
 
-  <script src="consoles.js?v=1"></script>
-  <script src="games.js?v=8"></script>
-  <script src="app.js?v=11"></script>
+  <script src="consoles.js?v=2"></script>
+  <script src="games.js?v=9"></script>
+  <script src="app.js?v=20"></script>
 </body>
 </html>

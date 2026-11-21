@@ -1,11 +1,36 @@
-// Add your games here.
-// Flash games: run  python3 tools/embed.py swf my-game.swf <id>  then set swf: "<id>" (played with Ruffle).
-// Console games: run  python3 tools/embed.py rom my-game.nds <id> <console>  then add an entry with
-//              rom: "<id>", console: "<console>"  (console ids are in consoles.js). Played with EmulatorJS.
-// Web games:   set url: "<page to load>" instead.
-// image: cover picture (a screenshot in covers/). If empty, a gradient from `color` is used.
-// desc:  short description shown on the game page.
+// Fruti Launcher game list.
+//
+// Every game has: id (also the art/ and covers/ file name), title, tags, image, color, desc
+// and ONE source:
+//   cdn: "<path in rom-games>"   console ROM loaded from FRUTI_ROM_SOURCES (set console: too)
+//   rom: "<id>"                  console ROM embedded in games/<console>/<id>.js (tools/embed.py rom ...)
+//   swf: "<id>"                  Flash game embedded in games/<id>.js (tools/embed.py swf ...), played with Ruffle
+//   url: "<page>"                web (HTML5) game, opened in a new tab
+// Leave the source empty ("") to list a game that isn't set up yet; it shows a "Setup needed" badge.
+// image: cover in covers/. Run  python3 tools/make-art.py  after adding one to build the tile + hero art.
+
+// ROM hosts, tried in order. jsDelivr is fast but refuses files over 20 MB, so GitHub raw is the fallback.
+window.FRUTI_ROM_SOURCES = [
+  "https://cdn.jsdelivr.net/gh/jogresh7-ship-it/rom-games@main/",
+  "https://raw.githubusercontent.com/jogresh7-ship-it/rom-games/main/"
+];
+
 window.FRUTI_GAMES = [
+  // ---- Console ROMs (rom-games CDN) ----
+  { id: "mario-kart-ds",              title: "Mario Kart DS",                   tags: ["Racing", "Multiplayer"],   console: "nds", cdn: "roms/nds/Mario Kart DS (USA) (En,Fr,De,Es,It).nds",                  image: "covers/mario-kart-ds.jpg",              color: ["#e52521", "#1e40af"], desc: "Race Mario and friends across 32 tracks, grab items and drift-boost your way to the gold cup." },
+  { id: "new-super-mario-bros-ds",    title: "New Super Mario Bros.",           tags: ["Platformer"],              console: "nds", cdn: "roms/nds/New Super Mario Bros. (USA, Australia).nds",                image: "covers/new-super-mario-bros-ds.jpg",    color: ["#e52521", "#fbbf24"], desc: "Classic side-scrolling Mario with mega mushrooms, shells and eight worlds to stomp through." },
+  { id: "ocarina-of-time",            title: "The Legend of Zelda: Ocarina of Time", tags: ["Adventure", "Action"], console: "n64", cdn: "roms/n64/Legend of Zelda, The - Ocarina of Time (U) (V1.2) [!].z64", image: "covers/ocarina-of-time.jpg",            color: ["#14532d", "#b45309"], desc: "Travel through time as Link to stop Ganondorf. Dungeons, puzzles and the ocarina that changes everything." },
+  { id: "pokemon-ultra-violet",       title: "Pokémon Ultra Violet",            tags: ["RPG", "ROM Hack"],         console: "gba", cdn: "roms/gba/Pokemon Ultra Violet (1.22) LSA (Fire Red Hack).gba",        image: "covers/pokemon-ultra-violet.jpg",       color: ["#6d28d9", "#db2777"], desc: "A FireRed hack with Pokémon from every generation, new moves and a fresh challenge through Kanto." },
+  { id: "f1-2002",                    title: "F1 2002",                         tags: ["Racing", "Sports"],        console: "gba", cdn: "roms/gba/F1 2002 (USA, Europe).gba",                                  image: "covers/f1-2002.jpg",                    color: ["#b91c1c", "#111827"], desc: "Formula One racing on the Game Boy Advance, with the 2002 teams, drivers and circuits." },
+  { id: "super-mario-bros-2",         title: "Super Mario Bros. 2",             tags: ["Platformer"],              console: "nes", cdn: "roms/nes/Super Mario Bros. 2 (USA) (Rev 1).nes",                      image: "covers/super-mario-bros-2.jpg",         color: ["#1d4ed8", "#dc2626"], desc: "Pluck vegetables and throw them at Shy Guys in the dream land of Subcon. Pick Mario, Luigi, Toad or Peach." },
+  { id: "super-mario-bros-duck-hunt", title: "Super Mario Bros. + Duck Hunt",   tags: ["Platformer", "Arcade"],    console: "nes", cdn: "roms/nes/Super Mario Bros. + Duck Hunt (USA).nes",                    image: "covers/super-mario-bros-duck-hunt.jpg", color: ["#dc2626", "#0ea5e9"], desc: "The original Super Mario Bros. adventure, plus Duck Hunt on the same cartridge." },
+
+  // ---- Web games ----
+  { id: "plants-vs-zombies-ds",       title: "Plants vs. Zombies DS",           tags: ["Strategy", "Tower Defense"], url: "", image: "", color: ["#65a30d", "#3f6212"], desc: "Plant sunflowers, peashooters and wall-nuts to stop the zombies before they reach your house." },
+  { id: "flappy-birds",               title: "Flappy Birds",                    tags: ["Arcade"],                    url: "", image: "", color: ["#38bdf8", "#facc15"], desc: "Tap to flap and squeeze through the pipes. One mistake and it's over." },
+
+  // ---- Flash games (Ruffle) ----
+  { id: "bloons-td-5",                title: "Bloons Tower Defense 5",          tags: ["Strategy", "Tower Defense"], swf: "", image: "", color: ["#f59e0b", "#dc2626"], desc: "The biggest Bloons TD: upgrade paths, specialty buildings and loads of tracks." },
   { id: "bloons-td-4",             title: "Bloons Tower Defense 4",   tags: ["Strategy", "Tower Defense"], swf: "bloons-td-4",             image: "covers/bloons-td-4.jpg",             color: ["#ff512f", "#f09819"], desc: "Place monkey towers along the track and pop every bloon before it gets through. More towers, upgrades and tougher rounds than ever." },
   { id: "commando-2",              title: "Commando 2",               tags: ["Action", "Shooter"],         swf: "commando-2",              image: "covers/commando-2.jpg",              color: ["#3e2a1a", "#a0522d"], desc: "Fight through enemy territory as an elite commando. Grab new weapons, take out soldiers and survive each mission." },
   { id: "bloons-super-monkey",     title: "Bloons Super Monkey",      tags: ["Shooter", "Arcade"],         swf: "bloons-super-monkey",     image: "covers/bloons-super-monkey.jpg",     color: ["#8e2de2", "#ff6a88"], desc: "Fly as the Super Monkey and blast waves of bloons. Earn upgrades between levels to boost your firepower." },
