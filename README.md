@@ -29,6 +29,17 @@ Browsers block `fetch()` for pages opened from disk (`file://`), so normal `.swf
 
 ## Features
 
+The launcher (`index.html`, `desktop.css`, `desktop.js`) has a desktop game-library layout:
+
+- Icon rail on the left: Library, Recently played, Favorites, Emulators, Statistics, Settings
+- Toolbar with search, favorites filter, group by (genre / platform / none), sort, platform filter, random game and a "Filter Active" chip that clears filters
+- Three views: **Details** (grouped, collapsible game list + a big details page with background art, Play button, time played and info panel), **Grid** (cover cards with a platform badge) and **List** (sortable table)
+- Keyboard: `/` search, arrow keys to select, `Enter` to play, `F` to favorite; double-click a game to play it
+- Settings: accent color, grid cover size, background art and grid titles
+
+The previous design is still available as `classic.html` (linked from Settings). Its features:
+
+
 - Featured "Continue Playing" banner that rotates and puts recently played games first
 - Recommended row, plus a searchable Library
 - Games open in their own browser tab, titled with the game name
