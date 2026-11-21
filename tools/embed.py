@@ -19,6 +19,7 @@ kind, src = sys.argv[1], sys.argv[2]
 data = open(src, "rb").read()
 if kind == "swf":
     gid = sys.argv[3]
+    os.makedirs(os.path.join(root, "games"), exist_ok=True)
     write(os.path.join(root, "games", gid + ".js"), "FRUTI_SWF", gid, data)
 elif kind == "rom":
     gid = sys.argv[3]

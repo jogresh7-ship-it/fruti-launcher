@@ -220,7 +220,7 @@
     const box = $("#details");
     const g = byId[ui.sel];
     box.classList.toggle("no-bg", !ui.bgArt);
-    if (!g) { box.innerHTML = `<div class="empty big">Select a game</div>`; return; }
+    if (!g) { box.innerHTML = `<div class="empty big">${games.length ? "Select a game" : "Your library is empty"}</div>`; return; }
     const p = PLAT[platOf(g)];
     const t = times[g.id] || 0, last = lastAt(g.id);
     const fav = favs.has(g.id);
