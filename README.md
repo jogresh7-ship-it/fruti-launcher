@@ -20,7 +20,7 @@ Edit `games.js`.
   ```
 
   Consoles are listed in `consoles.js`. Games play through [EmulatorJS](https://github.com/EmulatorJS/EmulatorJS) 4.2.3, bundled in `emulatorjs/` (GPL-3.0) with the melonDS, mupen64plus_next, mGBA, Gambatte, Snes9x, FCEUmm, Genesis Plus GX and PCSX ReARMed cores.
-- **Web games:** set `url` to the page to load instead.
+- **Web games** (HTML5): put the game folder in `web/<id>/` and set `url: "web/<id>/index.html"`. They show in the **Web** tab.
 - `image` is the cover picture. Covers are screenshots of each game, saved in `covers/` as JPGs. Games without one get a gradient from `color`.
 
 ### Why games are `.js` files

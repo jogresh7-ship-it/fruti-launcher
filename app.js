@@ -1,6 +1,6 @@
 (() => {
   "use strict";
-  const VERSION = "11";
+  const VERSION = "12";
   // When the launcher runs somewhere without its files (e.g. pasted into LiveCodes,
   // which serves it from a blob: URL), load games and covers from the GitHub Pages site.
   const SITE = "https://jogresh7-ship-it.github.io/fruti-launcher/";
@@ -56,6 +56,7 @@
     home: `<span class="logo"></span>`,
     library: `<svg viewBox="0 0 24 24"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>`,
     settings: `<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>`,
+    web: `<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>`,
     flash: `<svg viewBox="0 0 24 24"><path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z"/></svg>`,
     n64: `<svg viewBox="0 0 24 24"><path d="M6 11h4M8 9v4M15 12h.01M18 10h.01"/><path d="M17.32 5H6.68a4 4 0 0 0-3.98 3.59L2 15.5A3 3 0 0 0 7.24 18l1.26-2h7l1.26 2A3 3 0 0 0 22 15.5l-.7-6.91A4 4 0 0 0 17.32 5z"/></svg>`,
     clock: `<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>`,
@@ -63,7 +64,7 @@
 
   // ---------- Navigation ----------
   const CONSOLES = window.FRUTI_CONSOLES || [];
-  const TABS = [["home", "Fruti"], ["library", "Library"], ["flash", "Flash"], ...CONSOLES.map((c) => ["c-" + c.id, c.name]), ["settings", "Settings"]];
+  const TABS = [["home", "Fruti"], ["library", "Library"], ["flash", "Flash"], ["web", "Web"], ...CONSOLES.map((c) => ["c-" + c.id, c.name]), ["settings", "Settings"]];
   // One page per console, added before the Settings page
   CONSOLES.forEach((c) => {
     const sec = h("section", "view", `<h2 class="sec-head" style="margin-top:0">${esc(c.name)}</h2><div class="grid-v" id="grid-${c.id}"></div>`);
@@ -168,9 +169,13 @@
   const isN64 = (g) => consoleOf(g) === "n64";
   function renderConsoles() {
     const fl = $("#flash-grid"); fl.innerHTML = "";
-    const flash = games.filter((g) => !consoleOf(g));
+    const flash = games.filter((g) => g.swf);
     if (!flash.length) fl.appendChild(h("p", "empty", "No Flash games yet."));
     flash.forEach((g) => fl.appendChild(card(g, "v")));
+    const wg = $("#web-grid"); wg.innerHTML = "";
+    const web = games.filter((g) => !g.swf && !consoleOf(g));
+    if (!web.length) wg.appendChild(h("p", "empty", "No web games yet."));
+    web.forEach((g) => wg.appendChild(card(g, "v")));
 
     CONSOLES.forEach((c) => {
       const grid = $("#grid-" + c.id); grid.innerHTML = "";
