@@ -246,8 +246,8 @@ async function generate() {
   playerModel = makePerson({ body: 0xe8e2d8, joints: 0xff4f8b });
   playerModel.position.copy(city.spawn);
   scene.add(playerModel);
-  walker = new Walker(playerModel);
-  walker.facing = -Math.PI / 2;
+  walker = new Walker(playerModel, limits);
+  walker.teleport(city.spawn, -Math.PI / 2);
   const car = traffic.spawn();
   car.model.position.set(city.spawn.x - 4.4, 0.03, city.spawn.z - 3);
   car.model.rotation.y = Math.PI;
@@ -434,10 +434,8 @@ function enterCar(c) {
 function exitCar() {
   const m = driven.model;
   const left = new THREE.Vector3(Math.cos(driven.heading), 0, -Math.sin(driven.heading));
-  walker.pos.copy(driven.pos).addScaledVector(left, 1.9);
-  walker.jumpY = 0;
-  walker.facing = driven.heading;
   playerModel.visible = true;
+  walker.teleport(driven.pos.clone().addScaledVector(left, 1.9), driven.heading);
   m.remove(headlight, headlight.target);
   // hand the car back to the traffic system as a parked (knocked) car
   const car = { model: m, a: 0, b: 0, t: 0, speed: 0, cruise: 12, turn: null, knocked: null };
