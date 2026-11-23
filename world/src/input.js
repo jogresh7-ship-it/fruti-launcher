@@ -23,6 +23,7 @@ export class Input {
     addEventListener("mousemove", (e) => {
       if (document.pointerLockElement === canvas) { this.look.x += e.movementX; this.look.y += e.movementY; this.lastLook = performance.now(); }
     });
+    addEventListener("mousedown", (e) => { if (document.pointerLockElement === canvas && e.button === 0) this.pressed.add("Mouse0"); });
     addEventListener("wheel", (e) => { if (document.pointerLockElement === canvas) this.zoom += Math.sign(e.deltaY); }, { passive: true });
 
     this.isTouch = matchMedia("(pointer: coarse)").matches;
@@ -105,8 +106,10 @@ export class Input {
       jump: p("Space") || this.touchPressed.has("jump") || gpPress(0),
       handbrake: k("Space") || this.touchBtn.has("jump") || (gp && gp.b[0]),
       enter: p("KeyF") || p("KeyE") || this.touchPressed.has("enter") || gpPress(3),
-      horn: k("KeyH") || (gp && gp.b[1]),
-      camera: p("KeyC") || this.touchPressed.has("camera") || gpPress(11),
+      horn: k("KeyH") || (gp && gp.b[4]),
+      camera: p("KeyV") || this.touchPressed.has("camera") || gpPress(11),
+      crouch: p("KeyC") || p("ControlLeft") || this.touchPressed.has("crouch") || gpPress(1),
+      attack: p("Mouse0") || p("KeyQ") || this.touchPressed.has("attack") || gpPress(2),
       map: p("KeyM") || p("Tab") || this.touchPressed.has("map") || gpPress(8),
       menu: p("Escape") || p("KeyP") || this.touchPressed.has("menu") || gpPress(9),
       time: p("KeyT"),

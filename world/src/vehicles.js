@@ -28,8 +28,8 @@ export async function loadRealCars() {
     const box = new THREE.Box3().setFromObject(scene), size = box.getSize(new THREE.Vector3()), c = box.getCenter(new THREE.Vector3());
     const k = r.len / size.z;
     const toCar = new THREE.Matrix4().makeScale(k, k, k).multiply(new THREE.Matrix4().makeTranslation(-c.x, -box.min.y, -c.z));
-    // bake transforms and merge everything that shares a material (fewer draw calls)
-    const groups = new Map();
+    // bake transforms into plain float geometry (car space: +z forward, wheels on y=0)
+    const parts = [];
     scene.traverse((o) => {
       if (!o.isMesh) return;
       const g = o.geometry.clone();
@@ -44,19 +44,107 @@ export async function loadRealCars() {
       }
       // (only now, in plain floats: quantized int16 positions would clip when transformed)
       g.applyMatrix4(new THREE.Matrix4().multiplyMatrices(toCar, o.matrixWorld));
+      g.computeBoundingBox();
       const m = o.material;
       m.flatShading = false; m.needsUpdate = true;
-      if (!groups.has(m)) groups.set(m, []);
-      groups.get(m).push(g);
+      parts.push({ g, m, box: g.boundingBox });
     });
-    const root = new THREE.Group();
-    for (const [m, list] of groups) {
-      const mesh = new THREE.Mesh(mergeGeometries(list), m);
-      mesh.castShadow = true;
-      root.add(mesh);
+
+    // Find the four wheels: low, compact, outboard parts, grouped by corner. Everything that sits
+    // inside a corner's wheel box (tire, rim, brake disc, bolts) turns with it.
+    const W = size.x * k;
+    const isWheelish = (b) => {
+      const s = b.getSize(new THREE.Vector3()), c = b.getCenter(new THREE.Vector3());
+      return c.y < 0.62 && s.y > 0.25 && s.y < 1.05 && s.z > 0.25 && s.z < 1.1 && s.x < 0.55 && Math.abs(c.x) > W * 0.25;
+    };
+    // Some models keep all four tires (or rims, discs) in one mesh: split those by corner.
+    const cornerKey = (x, z) => (x > 0 ? "R" : "L") + (z > 0 ? "F" : "B");
+    const splitByCorner = (p) => {
+      const g = p.g.index ? p.g.toNonIndexed() : p.g;
+      const P = g.attributes.position.array, N = g.attributes.normal.array, U = g.attributes.uv.array;
+      const out = {};
+      for (let t = 0; t < P.length / 9; t++) {
+        const cx = (P[t * 9] + P[t * 9 + 3] + P[t * 9 + 6]) / 3, cz = (P[t * 9 + 2] + P[t * 9 + 5] + P[t * 9 + 8]) / 3;
+        const o = (out[cornerKey(cx, cz)] ||= { p: [], n: [], u: [] });
+        for (let v = 0; v < 3; v++) {
+          const i = t * 3 + v;
+          o.p.push(P[i * 3], P[i * 3 + 1], P[i * 3 + 2]); o.n.push(N[i * 3], N[i * 3 + 1], N[i * 3 + 2]); o.u.push(U[i * 2], U[i * 2 + 1]);
+        }
+      }
+      return Object.entries(out).map(([key, o]) => {
+        const ng = new THREE.BufferGeometry();
+        ng.setAttribute("position", new THREE.Float32BufferAttribute(o.p, 3));
+        ng.setAttribute("normal", new THREE.Float32BufferAttribute(o.n, 3));
+        ng.setAttribute("uv", new THREE.Float32BufferAttribute(o.u, 2));
+        ng.setIndex([...Array(o.p.length / 3).keys()]);
+        ng.computeBoundingBox();
+        return { key, g: ng, m: p.m, box: ng.boundingBox };
+      });
+    };
+    for (let i = parts.length - 1; i >= 0; i--) {
+      const p = parts[i];
+      if (isWheelish(p.box)) continue;
+      const c = p.box.getCenter(new THREE.Vector3()), sz = p.box.getSize(new THREE.Vector3());
+      if (c.y > 0.62 || sz.y > 1.05 || sz.y < 0.25) continue;
+      const q = splitByCorner(p);
+      if (q.length === 4 && q.every((x) => isWheelish(x.box))) parts.splice(i, 1, ...q);
     }
+    const corners = {};
+    for (const p of parts) if (isWheelish(p.box)) {
+      const c = p.box.getCenter(new THREE.Vector3());
+      (corners[cornerKey(c.x, c.z)] ||= new THREE.Box3()).union(p.box);
+    }
+    const wheels = [];
+    const ok = Object.keys(corners).length === 4;
+
+    if (ok) for (const key of ["LF", "RF", "LB", "RB"]) {
+      const box = corners[key].clone().expandByScalar(0.04);
+      const center = corners[key].getCenter(new THREE.Vector3());
+      const radius = corners[key].getSize(new THREE.Vector3()).y / 2;
+      wheels.push({ key, box, center, radius, parts: [] });
+    }
+    const body = [];
+    for (const p of parts) {
+      const w = wheels.find((w) => w.box.containsBox(p.box));
+      if (w) { w.parts.push(p); continue; }
+      // a mesh shared by all four wheels (bolts, logos): split it if every piece fits a wheel
+      const c = p.box.getCenter(new THREE.Vector3());
+      if (ok && c.y < 0.62) {
+        const q = splitByCorner(p);
+        const fit = q.map((x) => wheels.find((w) => w.key === x.key && w.box.containsBox(x.box)));
+        if (q.length > 1 && fit.every(Boolean)) { q.forEach((x, i) => fit[i].parts.push(x)); continue; }
+      }
+      body.push(p);
+    }
+    const mergeByMaterial = (list, into, offset) => {
+      const groups = new Map();
+      for (const p of list) {
+        if (offset) p.g.translate(-offset.x, -offset.y, -offset.z);
+        if (!groups.has(p.m)) groups.set(p.m, []);
+        groups.get(p.m).push(p.g);
+      }
+      for (const [m, gs] of groups) {
+        const mesh = new THREE.Mesh(mergeGeometries(gs), m);
+        mesh.castShadow = true;
+        into.add(mesh);
+      }
+    };
+    const root = new THREE.Group();
+    mergeByMaterial(body, root);
+    // wheel pivots: named so clones can find them (front pair first, as the procedural cars)
+    let wr = 0.36;
+    for (const w of wheels) {
+      const pivot = new THREE.Group();
+      pivot.name = "wheel_" + w.key;
+      pivot.position.copy(w.center);
+      mergeByMaterial(w.parts, pivot, w.center);
+      root.add(pivot);
+      wr = w.radius;
+    }
+    root.userData.wheelBase = ok ? wheels[0].center.z - wheels[2].center.z : r.len * 0.58;
+    root.userData.wr = wr;
     realTemplates[name] = root;
-    TYPES[name] = { w: size.x * k, l: r.len, wr: 0.36, max: r.max, acc: r.acc, real: true };
+    TYPES[name] = { w: size.x * k, l: r.len, wr: root.userData.wr, max: r.max, acc: r.acc, real: true };
   }
 }
 
@@ -117,8 +205,10 @@ export function makeCarModel(typeName, color) {
   const t = TYPES[typeName];
   if (t.real) {
     const root = new THREE.Group();
-    root.add(realTemplates[typeName].clone());
-    root.userData = { type: typeName, spec: t, wheels: [], wheelBase: t.l * 0.58 };
+    const body = realTemplates[typeName].clone();
+    root.add(body);
+    const wheels = ["LF", "RF", "LB", "RB"].map((k) => body.getObjectByName("wheel_" + k)).filter(Boolean);
+    root.userData = { type: typeName, spec: t, wheels, wheelBase: realTemplates[typeName].userData.wheelBase };
     return root;
   }
   const g = carGeometry(typeName), M = sharedMats();
@@ -237,6 +327,7 @@ export function clampToLand(pos, vel, b) {
 }
 
 // ---------------- traffic ----------------
+const wrapA = (a) => Math.atan2(Math.sin(a), Math.cos(a));
 export class Traffic {
   constructor(city, scene, rng, count) {
     this.city = city; this.scene = scene; this.rng = rng;
@@ -331,7 +422,16 @@ export class Traffic {
         if (car.t >= len) this.startTurn(car);
         else this.place(car);
       }
-      for (const w of m.userData.wheels) w.rotation.x += step / m.userData.spec.wr;
+      // wheels roll with the distance travelled; the front pair steers by the turn's curvature
+      const yaw = wrapA(m.rotation.y - (car.lastYaw ?? m.rotation.y));
+      car.lastYaw = m.rotation.y;
+      const steerA = step > 1e-4 ? Math.atan((yaw / step) * m.userData.wheelBase) : 0;
+      car.steer = (car.steer || 0) + (THREE.MathUtils.clamp(steerA, -0.6, 0.6) - (car.steer || 0)) * Math.min(1, dt * 10);
+      m.userData.wheels.forEach((w, i) => {
+        w.rotation.order = "YXZ";
+        w.rotation.x += step / m.userData.spec.wr;
+        w.rotation.y = i < 2 ? car.steer : 0;
+      });
     }
   }
   startTurn(car) {

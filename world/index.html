@@ -103,6 +103,9 @@
     .touch.driving #tb-gas { display: grid !important; right: max(24px, env(safe-area-inset-right)); bottom: 120px; }
     .touch.driving #tb-brake { display: grid !important; right: max(104px, calc(env(safe-area-inset-right) + 80px)); bottom: 50px; }
     .touch.driving #tb-jump { bottom: 210px; right: max(104px, calc(env(safe-area-inset-right) + 80px)); }
+    #tb-attack { right: max(184px, calc(env(safe-area-inset-right) + 160px)); bottom: 130px; }
+    #tb-crouch { right: max(110px, calc(env(safe-area-inset-right) + 90px)); bottom: 52px; }
+    .touch.driving #tb-attack, .touch.driving #tb-crouch { display: none; }
     #tb-menu { right: max(20px, env(safe-area-inset-right)); top: 90px; }
     #tb-map { right: max(76px, calc(env(safe-area-inset-right) + 56px)); top: 90px; }
     #tb-camera { right: max(132px, calc(env(safe-area-inset-right) + 112px)); top: 90px; }
@@ -131,6 +134,8 @@
     <div class="tc tb" id="tb-jump" data-btn="jump"><img src="ui/icon_jump.png" alt="Jump / handbrake"></div>
     <div class="tc tb" id="tb-gas" data-btn="gas"><img src="ui/icon_pedal.png" alt="Gas"></div>
     <div class="tc tb" id="tb-brake" data-btn="brake"><img src="ui/icon_pedal_brake.png" alt="Brake"></div>
+    <div class="tc tb" id="tb-attack" data-btn="attack"><img src="ui/icon_hand.png" alt="Punch"></div>
+    <div class="tc tb sm" id="tb-crouch" data-btn="crouch"><img src="ui/icon_arrow.png" alt="Crouch" style="transform:rotate(90deg)"></div>
     <div class="tc tb sm" id="tb-menu" data-btn="menu"><img src="ui/icon_menu.png" alt="Menu"></div>
     <div class="tc tb sm" id="tb-map" data-btn="map"><img src="ui/icon_burst.png" alt="Map"></div>
     <div class="tc tb sm" id="tb-camera" data-btn="camera"><img src="ui/icon_arrow_rotate.png" alt="Camera"></div>
@@ -174,7 +179,9 @@
         <div class="k"><img src="ui/keyboard_space.png" alt="Space"></div><span>Jump / handbrake (drift)</span>
         <div class="k"><img src="ui/keyboard_f.png" alt="F"></div><span>Enter or steal a car / get out</span>
         <div class="k"><img src="ui/keyboard_h.png" alt="H"></div><span>Horn</span>
-        <div class="k"><img src="ui/keyboard_c.png" alt="C"></div><span>Camera distance</span>
+        <div class="k"><img src="ui/mouse_left.png" alt="Left click"><img src="ui/keyboard_q.png" alt="Q"></div><span>Punch</span>
+        <div class="k"><img src="ui/keyboard_c.png" alt="C"></div><span>Crouch</span>
+        <div class="k"><img src="ui/keyboard_v.png" alt="V"></div><span>Camera distance</span>
         <div class="k"><img src="ui/keyboard_m.png" alt="M"></div><span>Map</span>
         <div class="k"><img src="ui/keyboard_escape.png" alt="Esc"></div><span>Pause / world generator</span>
       </div>

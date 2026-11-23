@@ -19,6 +19,7 @@ export async function loadCharacter() {
 }
 
 import { ProceduralHumanoidAnimator } from "./ragphys/ProceduralHumanoidAnimator.js";
+import { Ragdoll } from "./ragphys/ragdoll.js";
 
 const matCache = new Map();
 const mat = (hex, rough, metal = 0) => {
@@ -56,11 +57,15 @@ export function rigAnimator(person, heading, ground, opts = {}) {
 }
 
 const wrapAngle = (a) => Math.atan2(Math.sin(a), Math.cos(a));
-// Steer the animator toward a world direction at a locomotion mode ('idle' | 'walk' | 'run' | 'sprint').
+const _d = new THREE.Vector3(), _h = new THREE.Vector3(), _v = new THREE.Vector3();
+
+// Steer the animator toward a world direction at a locomotion mode
+// ('idle' | 'walk' | 'run' | 'sprint' | 'crouch' | 'guard'). Crouching still = crouch at speed 0.
 function steer(person, wantHeading, mode) {
   const u = person.userData, an = u.anim;
   if (mode !== u.mode) { an.setMode(mode); u.mode = mode; }
-  if (mode === "idle" || wantHeading == null) { an.setTurn(0, 0); return; }
+  if (mode === "crouch") an.setSpeed(wantHeading == null ? 0 : an.modeSpeed("crouch"));
+  if (wantHeading == null) { an.setTurn(0, 0); return; }
   const err = wrapAngle(wantHeading - an.heading);
   an.setTurn(Math.max(-1, Math.min(1, err * 3)), err);
 }
@@ -72,6 +77,31 @@ function clampXZ(pos, bounds) {
   pos.y = y;
 }
 
+// ---------------- ragdoll (Ragphys / Rapier) ----------------
+// Hands the character to physics: every body part keeps the velocity it had, plus `vel`.
+// tone: muscle stiffness (0.4 = dead weight, ~3 = dazed but conscious).
+function startRagdoll(physics, person, vel, tone, hit) {
+  const an = person.userData.anim;
+  const rd = new Ragdoll(physics, an);
+  rd.sync(1 / 60);
+  rd.setDynamic(true);
+  for (const p of rd.parts) { p.k = tone; p.z = 1; p.grav = 0; p.pin = 0; p.pinRot = 0; }
+  for (const p of rd.parts) {
+    const v = p.rb.linvel();
+    p.rb.setLinvel({ x: v.x + vel.x, y: v.y + vel.y, z: v.z + vel.z }, true);
+  }
+  if (hit) rd.impulse(hit.part, hit.J, hit.point);
+  return rd;
+}
+// Keep the character's root under its pelvis (so the camera, minimap and AI follow the body),
+// then pose the bones from the physics bodies.
+function followRagdoll(person, rd) {
+  const t = rd.byName.pelvis.rb.translation();
+  person.position.x = t.x; person.position.z = t.z;
+  person.updateMatrixWorld(true);
+  rd.writeBack(1);
+}
+
 // ---------------- player on foot ----------------
 export class Walker {
   constructor(model, bounds) {
@@ -79,58 +109,71 @@ export class Walker {
     this.pos = model.position; // the animator moves this
     this.bounds = bounds;
     this.ground = (x, z) => (x > bounds.x1 ? Math.max(0.03, bounds.beachY(x, z)) : 0.04);
-    this.jumpY = 0;
     this.speed = 0;
+    this.crouch = false;
+    this.punchT = 0;
+    this.physics = null;
     this.teleport(model.position, 0);
   }
-  get facing() { return this.model.userData.anim.heading; }
+  get anim() { return this.model.userData.anim; }
+  get facing() { return this.anim.heading; }
+  get down() { return !!this.fall; }
   teleport(p, heading) {
     this.model.position.set(p.x, this.ground(p.x, p.z), p.z);
     rigAnimator(this.model, heading, this.ground, { agility: 1.8 });
+    this.crouch = false;
   }
-  get down() { return !!this.fall; }
-  // Thrown by a car: fly, tumble, land on the back, then get up again.
+  // Start a punch (the animator's rear-hand straight). Returns true when a new punch began.
+  attack() {
+    if (this.fall || this.punchT > 0) return false;
+    this.punchT = 0.62;
+    this.punchHit = false;
+    steer(this.model, null, "guard");
+    this.anim.strike();
+    return true;
+  }
+  // Hit by a car: a real ragdoll fall, then get back up where the body landed.
   knock(vel) {
     if (this.fall) return;
-    this.model.rotation.order = "YXZ";
-    this.fall = { t: 0, vel: vel.clone(), spin: -5 - vel.length() * 0.2, heading: this.facing };
+    if (!this.physics) return;
+    this.fall = { t: 0, heading: this.facing, rd: startRagdoll(this.physics, this.model, vel, 2.2, { part: "chest", J: _v.copy(vel).setY(0).multiplyScalar(4) }) };
   }
-  updateFall(dt, grid, bounds) {
-    const f = this.fall, pos = this.pos;
-    f.t += dt;
-    pos.addScaledVector(f.vel, dt);
-    f.vel.y -= 18 * dt;
-    const gy = this.ground(pos.x, pos.z) + 0.1;
-    if (pos.y < gy) { pos.y = gy; f.vel.x *= 0.55; f.vel.z *= 0.55; f.vel.y = Math.abs(f.vel.y) * 0.25; }
-    if (pos.y > gy + 0.1 || f.t < 0.3) this.model.rotation.x += f.spin * dt;
-    else this.model.rotation.x += (-Math.PI / 2 - this.model.rotation.x) * Math.min(1, dt * 8);
-    grid.resolveCircle(pos, 0.4, 0.5);
-    clampXZ(pos, bounds);
-    if (f.t > 2.8) { // get back up
-      this.model.rotation.set(0, 0, 0);
-      this.fall = null;
-      this.teleport(pos, f.heading);
-    }
-  }
+  afterPhysics() { if (this.fall) followRagdoll(this.model, this.fall.rd); }
   update(dt, input, camYaw, grid, bounds) {
-    if (this.fall) { this.updateFall(dt, grid, bounds); return; }
+    if (this.fall) {
+      const f = this.fall;
+      f.t += dt;
+      if (f.t > 3.2 && f.rd.motion() < 0.6) {
+        const t = f.rd.byName.pelvis.rb.translation(), h = f.rd.byName.head.rb.translation();
+        f.rd.dispose();
+        this.fall = null;
+        this.teleport(_v.set(t.x, 0, t.z), Math.atan2(t.x - h.x, t.z - h.z)); // stand up facing away from where the head lay
+      }
+      return;
+    }
+    if (input.crouch) this.crouch = !this.crouch;
     const fx = -Math.sin(camYaw), fz = -Math.cos(camYaw);
     // camera right vector is (-fz, fx)
     const mx = fx * input.y - fz * input.x;
     const mz = fz * input.y + fx * input.x;
     const mag = Math.min(1, Math.hypot(mx, mz));
-    const mode = mag < 0.12 ? "idle" : input.sprint ? "sprint" : mag > 0.6 ? "run" : "walk";
-    steer(this.model, mag < 0.12 ? null : Math.atan2(mx, mz), mode);
-    const an = this.model.userData.anim;
-    if (input.jump) an.jump();
+    const want = mag < 0.12 ? null : Math.atan2(mx, mz);
+    if (this.punchT > 0) {
+      this.punchT -= dt;
+      steer(this.model, want, "guard");
+    } else {
+      if (input.sprint && mag > 0.12) this.crouch = false;
+      const mode = this.crouch ? "crouch" : mag < 0.12 ? "idle" : input.sprint ? "sprint" : mag > 0.6 ? "run" : "walk";
+      steer(this.model, want, mode);
+    }
+    const an = this.anim;
+    if (input.jump && !this.crouch) an.jump();
     an.update(dt);
     this.speed = an.speed.x;
     grid.resolveCircle(this.pos, 0.38, 0.5);
     clampXZ(this.pos, bounds);
   }
 }
-
-const _d = new THREE.Vector3(), _h = new THREE.Vector3();
 
 // ---------------- pedestrians ----------------
 const BODIES = [0x8d5524, 0xc68642, 0xe0ac69, 0xf1c27d, 0xd9d3ca, 0x6b4226, 0xb9c4d0];
@@ -141,19 +184,23 @@ const flat = () => 0.08;
 export class Pedestrians {
   constructor(city, scene, rng, count) {
     this.scene = scene; this.rng = rng; this.city = city;
+    this.physics = null;
     this.list = [];
     for (let k = 0; k < count; k++) {
       const m = makePerson({ body: rng.pick(BODIES), joints: rng.pick(JOINTS) });
-      const ped = { model: m, b: rng.pick(city.blocks), off: 1.3 + rng.range(-0.4, 0.6), u: rng.next(), dir: rng.chance(0.5) ? 1 : -1, mode: rng.chance(0.85) ? "walk" : "run", dead: null, seed: k + 1 };
+      const ped = { model: m, b: rng.pick(city.blocks), off: 1.3 + rng.range(-0.4, 0.6), u: rng.next(), dir: rng.chance(0.5) ? 1 : -1, mode: rng.chance(0.85) ? "walk" : "run", dead: null, flee: null, health: 100, seed: k + 1 };
       this.spawnOnLoop(ped);
       scene.add(m);
       this.list.push(ped);
     }
   }
-  // Point on the block's sidewalk loop at parameter u (0..1), plus the walking direction there.
-  loopPoint(ped, u) {
+  rect(ped) {
     const { b, off } = ped;
-    const x0 = b.x0 - off, z0 = b.z0 - off, x1 = b.x1 + off, z1 = b.z1 + off;
+    return [b.x0 - off, b.z0 - off, b.x1 + off, b.z1 + off];
+  }
+  // Point on the block's sidewalk loop at parameter u (0..1), plus the loop's perimeter.
+  loopPoint(ped, u) {
+    const [x0, z0, x1, z1] = this.rect(ped);
     const w = x1 - x0, d = z1 - z0, per = 2 * (w + d);
     let s = (((u % 1) + 1) % 1) * per;
     if (s < w) return [x0 + s, z0, per];
@@ -162,23 +209,63 @@ export class Pedestrians {
     s -= w;
     return [x0, z1 - s, per];
   }
+  // After fleeing: join the sidewalk loop of the nearest block, at the closest point.
+  rehome(ped) {
+    const pos = ped.model.position;
+    let best = null, bd = Infinity;
+    for (const b of this.city.blocks) {
+      const cx = Math.max(b.x0, Math.min(pos.x, b.x1)), cz = Math.max(b.z0, Math.min(pos.z, b.z1));
+      const d = Math.hypot(pos.x - cx, pos.z - cz);
+      if (d < bd) { bd = d; best = b; }
+    }
+    ped.b = best;
+    const [x0, z0, x1, z1] = this.rect(ped), w = x1 - x0, d = z1 - z0, per = 2 * (w + d);
+    const px = Math.max(x0, Math.min(pos.x, x1)), pz = Math.max(z0, Math.min(pos.z, z1));
+    const e = [Math.abs(pz - z0), Math.abs(px - x1), Math.abs(pz - z1), Math.abs(px - x0)];
+    const side = e.indexOf(Math.min(...e));
+    const s = side === 0 ? px - x0 : side === 1 ? w + (pz - z0) : side === 2 ? w + d + (x1 - px) : 2 * w + d + (z1 - pz);
+    ped.u = s / per;
+  }
   spawnOnLoop(ped) {
     const [x, z] = this.loopPoint(ped, ped.u), [nx, nz] = this.loopPoint(ped, ped.u + ped.dir * 0.01);
     ped.model.position.set(x, 0.08, z);
     rigAnimator(ped.model, Math.atan2(nx - x, nz - z), flat, { seed: ped.seed });
   }
-  // Someone (the player) shoved this pedestrian: a stagger from the animator, or a fall when hard.
+  // Everyone near a scary event runs away from it.
+  panic(at, radius = 22) {
+    for (const p of this.list) {
+      if (p.dead) continue;
+      if (p.model.position.distanceTo(at) < radius) p.flee = { t: this.rng.range(6, 10), from: at.clone() };
+    }
+  }
+  // Ragdoll death. vel: body velocity (m/s); hit: optional {part, J (impulse vector), point}.
+  kill(p, vel, hit) {
+    if (p.dead) return;
+    p.health = 0;
+    p.flee = null;
+    if (this.physics) p.dead = { t: 0, rd: startRagdoll(this.physics, p.model, vel, 0.35, hit) };
+    else p.dead = { t: 0, rd: null };
+    this.panic(p.model.position);
+  }
+  // A punch from the player. dir: unit vector from player to the pedestrian.
+  punch(p, dir, damage = 34) {
+    if (p.dead) return;
+    p.health -= damage;
+    const head = p.model.userData.anim.bones.Head.getWorldPosition(new THREE.Vector3());
+    if (p.health <= 0) this.kill(p, _v.copy(dir).multiplyScalar(2.5).setY(0.6), { part: "head", J: dir.clone().multiplyScalar(45).setY(8), point: head });
+    else {
+      p.model.userData.anim.applyImpulse(dir, 150, "head");
+      this.panic(p.model.position, 18);
+      p.flee = { t: 9, from: p.model.position.clone().sub(dir) };
+    }
+  }
+  // Someone (the player) shoved this pedestrian: a stagger from the animator.
   bump(p, dirX, dirZ, speed) {
     if (p.dead) return;
-    if (speed > 6.5) {
-      p.model.rotation.order = "YXZ";
-      p.dead = { t: 0, vel: new THREE.Vector3(dirX * speed * 0.5, 2.5, dirZ * speed * 0.5), spin: -4 };
-      return;
-    }
-    p.bumpCD = p.bumpCD || 0;
-    if (performance.now() < p.bumpCD) return;
+    if (performance.now() < (p.bumpCD || 0)) return;
     p.bumpCD = performance.now() + 500;
     p.model.userData.anim.applyImpulse(_d.set(dirX, 0, dirZ), 40 + speed * 28, "chest");
+    if (speed > 6) p.flee = { t: 5, from: p.model.position.clone().addScaledVector(_d, -1) };
   }
   // Keep pedestrians from walking through each other.
   separate() {
@@ -193,34 +280,37 @@ export class Pedestrians {
       }
     }
   }
+  afterPhysics() { for (const p of this.list) if (p.dead?.rd) followRagdoll(p.model, p.dead.rd); }
   update(dt, car, carVel, onHit, camPos, player) {
     this.separate();
     for (const p of this.list) {
       const pos = p.model.position;
       if (p.dead) {
-        const k = p.dead;
-        k.t += dt;
-        if (k.t < 3) {
-          pos.addScaledVector(k.vel, dt);
-          k.vel.y -= 18 * dt;
-          if (pos.y < 0.1) { pos.y = 0.1; k.vel.multiplyScalar(0.6); k.vel.y = Math.abs(k.vel.y) * 0.3; }
-          if (pos.y > 0.2 || k.t < 0.3) p.model.rotation.x += k.spin * dt;
-          else p.model.rotation.x += (-Math.PI / 2 - p.model.rotation.x) * Math.min(1, dt * 8); // settle on its back
-        }
-        if (k.t > 15) {
-          p.dead = null;
-          p.model.rotation.set(0, 0, 0);
+        p.dead.t += dt;
+        // bodies stay a while, then quietly get replaced once nobody is looking closely
+        if (p.dead.t > 25 && (!camPos || pos.distanceTo(camPos) > 45) || p.dead.t > 90) {
+          p.dead.rd?.dispose();
+          p.dead = null; p.health = 100;
           p.b = this.rng.pick(this.city.blocks);
           this.spawnOnLoop(p);
         }
         continue;
       }
       if (camPos && pos.distanceToSquared(camPos) > ANIM_RANGE * ANIM_RANGE) continue;
-      // walk toward a point a few meters ahead on the loop
-      let [tx, tz, per] = this.loopPoint(p, p.u);
-      if (Math.hypot(tx - pos.x, tz - pos.z) < 2.2) { p.u += (p.dir * 2.5) / per; [tx, tz] = this.loopPoint(p, p.u); }
       const an = p.model.userData.anim;
-      steer(p.model, Math.atan2(tx - pos.x, tz - pos.z), p.mode);
+      if (p.flee) {
+        // sprint away from the threat, sliding along walls
+        p.flee.t -= dt;
+        let h = Math.atan2(pos.x - p.flee.from.x, pos.z - p.flee.from.z);
+        if (p.wallHit) h += 1.2 * (p.seed % 2 ? 1 : -1);
+        steer(p.model, h, "sprint");
+        if (p.flee.t <= 0) { p.flee = null; this.rehome(p); }
+      } else {
+        // walk toward a point a few meters ahead on the loop
+        let [tx, tz, per] = this.loopPoint(p, p.u);
+        if (Math.hypot(tx - pos.x, tz - pos.z) < 2.2) { p.u += (p.dir * 2.5) / per; [tx, tz] = this.loopPoint(p, p.u); }
+        steer(p.model, Math.atan2(tx - pos.x, tz - pos.z), p.mode);
+      }
       // look at the player when close; flinch from a car speeding at them
       if (player && pos.distanceToSquared(player) < 49) an.setLookTarget(_h.set(player.x, player.y + 1.6, player.z));
       else an.setLookTarget(null);
@@ -231,18 +321,21 @@ export class Pedestrians {
         if (dist < 12 && sp > 6 && (_d.x * carVel.x + _d.z * carVel.z) / (dist * sp) > 0.7) { an.flinch(_h.set(car.x, car.y + 1, car.z)); p.flinchCD = 2; }
       }
       an.update(dt);
-      this.city.grid.resolveCircle(pos, 0.35, 0.5);
+      p.wallHit = !!this.city.grid.resolveCircle(pos, 0.35, 0.5);
+      // hit by the player's car: ragdoll
       if (car) {
         const dx = pos.x - car.x, dz = pos.z - car.z;
         const sp = carVel.length();
         if (dx * dx + dz * dz < 4.2 && sp > 4) {
-          p.model.rotation.order = "YXZ";
-          p.dead = { t: 0, vel: carVel.clone().multiplyScalar(0.7).add(new THREE.Vector3(0, 4 + sp * 0.15, 0)), spin: -4 - sp * 0.15 };
+          this.kill(p, _v.copy(carVel).multiplyScalar(0.75).setY(2 + sp * 0.12), { part: "pelvis", J: carVel.clone().multiplyScalar(6), point: null });
           onHit && onHit(p);
         }
       }
     }
   }
   positions() { return this.list.filter((p) => !p.dead).map((p) => p.model.position); }
-  dispose() { for (const p of this.list) this.scene.remove(p.model); this.list = []; }
+  dispose() {
+    for (const p of this.list) { p.dead?.rd?.dispose(); this.scene.remove(p.model); }
+    this.list = [];
+  }
 }
