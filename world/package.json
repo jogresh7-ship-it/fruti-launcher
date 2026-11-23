@@ -1,0 +1,12 @@
+{
+  "name": "fruti-world",
+  "private": true,
+  "description": "Procedural open-world city generator (bundled into world.js)",
+  "scripts": {
+    "build": "esbuild src/main.js --bundle --minify --format=iife --target=es2020 --loader:.jpg=dataurl --loader:.jpeg=dataurl --loader:.bin=dataurl --loader:.gltf=text --loader:.glb=dataurl --outfile=world.js"
+  },
+  "devDependencies": {
+    "esbuild": "^0.24.0",
+    "three": "^0.170.0"
+  }
+}
