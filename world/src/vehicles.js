@@ -401,7 +401,7 @@ export class Traffic {
   }
   spawn(avoid, type) {
     const model = makeCarModel(type || randomCarType(this.rng), randomPaint(this.rng));
-    const car = { model, a: 0, b: 0, t: 0, speed: 0, cruise: this.rng.range(9, 15), turn: null, knocked: null };
+    const car = { model, a: 0, b: 0, t: 0, speed: 0, cruise: this.rng.range(9, 15), turn: null, knocked: null, route: [], avoid: new Map(), stuckT: 0, replanT: this.rng.range(4, 12), hue: this.rng.next() };
     for (let tries = 0; tries < 10; tries++) {
       [car.a, car.b] = this.randomEdge();
       car.t = this.rng.range(0, this.edgeLen());
@@ -413,6 +413,83 @@ export class Traffic {
     return car;
   }
   edgeLen() { return this.city.P - ROAD_W; }
+
+  // ---------- route planning ----------
+  // Every car drives to a destination along the cheapest route. A road costs its length, more
+  // when other cars are on it (traffic), and much more if this car has decided it dislikes it
+  // (it got stuck there). Cars re-plan when stuck or when a clearly better route opens up.
+  edgeKey(a, b) { return a * 4096 + b; }
+  countEdges() {
+    const n = (this.load = new Map());
+    for (const c of this.cars) if (!c.knocked) { const k = this.edgeKey(c.a, c.b); n.set(k, (n.get(k) || 0) + 1); }
+  }
+  plan(car, from, prev, dest = car.dest) {
+    const nodes = this.city.nodes, len = this.edgeLen();
+    if (dest == null || dest === from) { do dest = this.rng.int(0, nodes.length - 1); while (dest === from); }
+    const dist = new Map([[from, 0]]), back = new Map(), open = [[0, from]], now = performance.now();
+    while (open.length) {
+      open.sort((x, y) => x[0] - y[0]);
+      const [d, u] = open.shift();
+      if (u === dest) break;
+      if (d > (dist.get(u) ?? Infinity)) continue;
+      for (const v of nodes[u].nb) {
+        if (u === from && v === prev) continue; // no U-turns
+        const k = this.edgeKey(u, v);
+        const disliked = (car.avoid.get(k) || 0) > now ? 5000 : 0;
+        const nd = d + len * (1 + 0.7 * (this.load?.get(k) || 0)) + disliked;
+        if (nd < (dist.get(v) ?? Infinity)) { dist.set(v, nd); back.set(v, u); open.push([nd, v]); }
+      }
+    }
+    if (!back.has(dest)) return { route: [], cost: Infinity, dest };
+    const route = [];
+    for (let v = dest; v !== from; v = back.get(v)) route.unshift(v);
+    return { route, cost: dist.get(dest), dest };
+  }
+  replan(car, why) {
+    const r = this.plan(car, car.b, car.a);
+    car.route = r.route; car.dest = r.dest; car.cost = r.cost;
+    if (why) { car.mood = why; car.moodT = 2.5; }
+  }
+  nextNode(car) {
+    const nb = this.city.nodes[car.b].nb;
+    if (!car.route.length || !nb.includes(car.route[0]) || car.route[0] === car.a) { car.dest = null; this.replan(car); }
+    const c = car.route.shift();
+    if (c != null && nb.includes(c) && c !== car.a) return c;
+    return this.rng.pick(nb.filter((n) => n !== car.a));
+  }
+  // Coloured line along each car's planned route (test ground): red flashes mean it just re-routed.
+  showRoutes(on) {
+    this.routeLines = on;
+    if (!on) for (const c of this.cars) if (c.line) { this.scene.remove(c.line); c.line = null; }
+  }
+  drawRoutes() {
+    const tmp = new THREE.Vector3();
+    for (const c of this.cars) {
+      if (c.knocked || !c.route) { if (c.line) c.line.visible = false; continue; }
+      if (!c.line) {
+        const g = new THREE.BufferGeometry();
+        g.setAttribute("position", new THREE.BufferAttribute(new Float32Array(3 * 80), 3));
+        c.line = new THREE.Line(g, new THREE.LineBasicMaterial({ color: new THREE.Color().setHSL(c.hue, 0.85, 0.6), transparent: true, opacity: 0.9 }));
+        c.line.frustumCulled = false;
+        this.scene.add(c.line);
+      }
+      c.line.visible = true;
+      const pts = [c.model.position.clone().setY(0.2)];
+      const len = this.edgeLen();
+      let a = c.a, b = c.b;
+      pts.push(this.lanePoint(a, b, len, tmp).clone().setY(0.2));
+      for (const n of c.route.slice(0, 24)) {
+        pts.push(this.lanePoint(b, n, 0, tmp).clone().setY(0.2), this.lanePoint(b, n, len, tmp).clone().setY(0.2));
+        a = b; b = n;
+      }
+      const arr = c.line.geometry.attributes.position.array;
+      const n = Math.min(pts.length, 80);
+      for (let i = 0; i < n; i++) { arr[i * 3] = pts[i].x; arr[i * 3 + 1] = pts[i].y; arr[i * 3 + 2] = pts[i].z; }
+      c.line.geometry.setDrawRange(0, n);
+      c.line.geometry.attributes.position.needsUpdate = true;
+      c.line.material.color.setHSL(c.moodT > 0 ? 0 : c.hue, 0.9, c.moodT > 0 ? 0.55 : 0.6);
+    }
+  }
   dir(a, b) {
     const A = this.city.nodes[a], B = this.city.nodes[b];
     return new THREE.Vector2(Math.sign(B.x - A.x), Math.sign(B.z - A.z));
@@ -441,9 +518,28 @@ export class Traffic {
     const dur = [11, 2, 11, 2][this.phase];
     if (this.phaseT > dur) { this.phaseT = 0; this.phase = (this.phase + 1) % 4; }
     const len = this.edgeLen();
+    this.countEdges();
     for (const car of this.cars) {
       const m = car.model;
       if (car.knocked) { this.updateKnocked(car, dt, player); continue; }
+      // no plan yet (just spawned, or arrived)? pick a destination and plan the way there
+      if (!car.turn && !car.route.length) this.replan(car);
+      // stuck (blocked, not just waiting at a red light)? dislike the road ahead and find another way
+      car.moodT = Math.max(0, (car.moodT || 0) - dt);
+      const waitingAtLight = !car.turn && !this.green(car.a, car.b) && car.t > len - 16;
+      car.stuckT = car.speed < 0.4 && !waitingAtLight ? car.stuckT + dt : 0;
+      if (car.stuckT > 5) {
+        if (car.route[0] != null) car.avoid.set(this.edgeKey(car.b, car.route[0]), performance.now() + 30000);
+        car.avoid.set(this.edgeKey(car.a, car.b), performance.now() + 30000);
+        this.replan(car, "stuck");
+        car.stuckT = 0;
+      }
+      // now and then, check whether traffic made another route clearly better
+      if ((car.replanT -= dt) <= 0) {
+        car.replanT = this.rng.range(6, 12);
+        const alt = this.plan(car, car.b, car.a, car.dest);
+        if (alt.route.length && alt.cost < (car.cost ?? Infinity) * 0.8) { car.route = alt.route; car.cost = alt.cost; car.mood = "better"; car.moodT = 1.5; }
+      }
       // look ahead for obstacles
       const fwd = new THREE.Vector3(Math.sin(m.rotation.y), 0, Math.cos(m.rotation.y));
       let limit = car.cruise;
@@ -494,8 +590,7 @@ export class Traffic {
   }
   startTurn(car) {
     const nodes = this.city.nodes;
-    const opts = nodes[car.b].nb.filter((n) => n !== car.a);
-    const c = this.rng.pick(opts);
+    const c = this.nextNode(car);
     const p0 = this.lanePoint(car.a, car.b, this.edgeLen(), new THREE.Vector3());
     const p2 = this.lanePoint(car.b, c, 0, new THREE.Vector3());
     const d1 = this.dir(car.a, car.b), d2 = this.dir(car.b, c);
@@ -521,8 +616,9 @@ export class Traffic {
     const damp = Math.exp(-1.8 * dt);
     k.vel.multiplyScalar(damp); k.spin *= damp;
     this.city.grid.resolveCircle(car.model.position, 1.6, 0.5);
-    if (k.t > 12 && player && car.model.position.distanceTo(player) > 120) {
+    if (!car.parked && k.t > 12 && player && car.model.position.distanceTo(player) > 120) {
       car.knocked = null;
+      car.route = [];
       [car.a, car.b] = this.randomEdge();
       car.t = 0; car.speed = 0;
       this.place(car);
@@ -530,9 +626,18 @@ export class Traffic {
   }
   remove(car) {
     this.cars.splice(this.cars.indexOf(car), 1);
+    if (car.line) { this.scene.remove(car.line); car.line = null; }
+  }
+  // Take a car back into the world as a parked car (it rejoins traffic later, unless `parked`).
+  adopt(model, vel, parked = false) {
+    const car = { model, a: 0, b: 0, t: 0, speed: 0, cruise: this.rng.range(9, 15), turn: null, knocked: null, route: [], avoid: new Map(), stuckT: 0, replanT: 8, hue: this.rng.next(), parked };
+    this.cars.push(car);
+    this.knock(car, vel || new THREE.Vector3());
+    car.knocked.spin = 0;
+    return car;
   }
   dispose() {
-    for (const c of this.cars) this.scene.remove(c.model);
+    for (const c of this.cars) { this.scene.remove(c.model); if (c.line) this.scene.remove(c.line); }
     this.cars = [];
   }
 }

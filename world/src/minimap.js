@@ -20,7 +20,7 @@ export class Minimap {
     x.lineTo(X(city.landX1), Z(b.z1 + 80)); x.fill();
     for (const isl of city.islands) { x.beginPath(); x.arc(X(isl.x), Z(isl.z), isl.r * 0.8 * k, 0, 7); x.fill(); }
     x.fillStyle = "#2d343b"; x.fillRect(X(b.x0), Z(b.z0), (b.x1 - b.x0) * k, (b.z1 - b.z0) * k);
-    const fill = { park: "#2f6b3f", residential: "#36513c", downtown: "#3a4048", midtown: "#383e45", beach: "#3e3a44" };
+    const fill = { park: "#2f6b3f", residential: "#36513c", downtown: "#3a4048", midtown: "#383e45", beach: "#3e3a44", lot: "#3b4047", showroom: "#5a3a52" };
     for (const bl of city.blocks) { x.fillStyle = fill[bl.kind]; x.fillRect(X(bl.x0), Z(bl.z0), (bl.x1 - bl.x0) * k, (bl.z1 - bl.z0) * k); }
     x.fillStyle = "#1c2126";
     for (const cl of city.colliders) if (cl.h > 2 && !cl.thin) x.fillRect(X(cl.x0), Z(cl.z0), (cl.x1 - cl.x0) * k, (cl.z1 - cl.z0) * k);

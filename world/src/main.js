@@ -46,12 +46,12 @@ const isTouch = matchMedia("(pointer: coarse)").matches;
 
 // ---------------- settings ----------------
 const DEFAULTS = {
-  seed: "sunset", size: isTouch ? 8 : 10, height: 1, density: 0.75, palms: 1,
-  traffic: isTouch ? 16 : 36, peds: isTouch ? 20 : 60, time: 17.6, timeSpeed: 1, quality: isTouch ? "low" : "high", sens: 1,
+  seed: "sunset", size: 5, height: 1, density: 0.75, palms: 1,
+  traffic: isTouch ? 16 : 30, peds: isTouch ? 20 : 40, time: 17.6, timeSpeed: 1, quality: "perf", sens: 1, layout: "test",
 };
 let params = { ...DEFAULTS };
-try { Object.assign(params, JSON.parse(localStorage.getItem("fruti-world") || "{}")); } catch (e) { /* storage blocked */ }
-const save = () => { try { localStorage.setItem("fruti-world", JSON.stringify(params)); } catch (e) { /* ignore */ } };
+try { Object.assign(params, JSON.parse(localStorage.getItem("fruti-world-v2") || "{}")); } catch (e) { /* storage blocked */ }
+const save = () => { try { localStorage.setItem("fruti-world-v2", JSON.stringify(params)); } catch (e) { /* ignore */ } };
 
 const QUALITY = {
   perf: { pr: 0.55, shadows: 0, bloom: false, reflect: false, msaa: 0, post: false },
@@ -282,11 +282,30 @@ async function generate() {
   walker = new Walker(playerModel, limits);
   walker.physics = physics;
   walker.teleport(city.spawn, -Math.PI / 2);
-  const car = traffic.spawn(null, "f1");
-  car.model.position.set(city.spawn.x - 4.4, 0.03, city.spawn.z - 3);
-  car.model.rotation.y = Math.PI;
-  traffic.knock(car, new THREE.Vector3());
-  car.knocked.spin = 0;
+  if (city.test) {
+    // showroom: one of every car, parked in a row with name signs
+    const types = ["f1", "urus", "seal", "silverado", "sports", "sedan", "suv", "taxi", "van"];
+    city.showroom.forEach((slot, k) => {
+      const t = types[k % types.length];
+      const m = makeCarModel(t, ["#e63946", "#3a86ff", "#ffbe0b", "#2ec4b6", "#ff7eb6", "#f4f4f4", "#8338ec", "#ffc300", "#fb5607"][k % 9]);
+      m.position.set(slot.x, 0.03, slot.z);
+      m.rotation.y = slot.h;
+      m.userData.showroom = true;
+      const label = makeLabel(VEHICLE_NAMES[t][0], VEHICLE_NAMES[t][1]);
+      label.position.set(0, (m.userData.doorInfo?.height || 1.5) + 1.1, 0);
+      m.add(label);
+      m.userData.label = label;
+      scene.add(m);
+      traffic.adopt(m, null, true);
+    });
+  } else {
+    const car = traffic.spawn(null, "f1");
+    car.model.position.set(city.spawn.x - 4.4, 0.03, city.spawn.z - 3);
+    car.model.rotation.y = Math.PI;
+    traffic.knock(car, new THREE.Vector3());
+    car.knocked.spin = 0;
+  }
+  traffic.showRoutes(city.test);
   hours = params.time;
   minimap = new Minimap(city, $("#minimap"), $("#bigmap"), cityName(seed));
   $("#city-name").textContent = cityName(seed);
@@ -496,8 +515,11 @@ function play(realDt, inp) {
     if (driven) exitCar();
     else if (near) enterCar(near);
   }
+  const nearPed = !driven && !busy ? peds.nearest(walker.pos) : null;
+  if (nearPed && ctl.talk) peds.talkTo(nearPed);
   if (!driven && near) help(`Press <img src="ui/keyboard_f.png" alt="F"> to get in the ${VEHICLE_NAMES[near.model.userData.type]?.[0] || "car"}.`, 0.3, "car");
-  else if (helpKey === "car") hideHelp();
+  else if (nearPed && !nearPed.hostile) help(`Press <img src="ui/keyboard_e.png" alt="E"> to talk · <img src="ui/mouse_left.png" alt="Click"> to punch`, 0.3, "ped");
+  else if (helpKey === "car" || helpKey === "ped") hideHelp();
 
   traffic.update(dt, driven ? null : walker.pos, driven ? driven.pos : null, peds.positions());
   walker.inCar = !!driven || (seq && seq.phase !== "walk");
@@ -505,6 +527,8 @@ function play(realDt, inp) {
   if (driven) carObs.push({ x: driven.pos.x, z: driven.pos.z, h: driven.heading });
   peds.update(dt, driven ? driven.pos : null, driven ? driven.vel : null, () => { sound.crash(8); }, camera.position, driven ? driven.pos : walker.pos, carObs, walker);
   stepPhysics(dt);
+  if ((routeT -= realDt) <= 0 && traffic.routeLines) { routeT = 0.12; traffic.drawRoutes(); }
+  drawBubbles();
 
   if (inp.camera) cam.far = !cam.far;
   if (inp.map) $("#bigmap-wrap").classList.toggle("show");
@@ -538,7 +562,7 @@ function districtAt(p) {
   if (p.x > city.landX1) return "Beach";
   if (p.x > city.half - ROAD_W / 2) return "Ocean Boulevard";
   for (const b of city.blocks) if (p.x > b.x0 - ROAD_W / 2 && p.x < b.x1 + ROAD_W / 2 && p.z > b.z0 - ROAD_W / 2 && p.z < b.z1 + ROAD_W / 2) {
-    return { downtown: "Downtown", midtown: "Midtown", residential: "Palm Heights", beach: "Ocean Boulevard", park: "City Park" }[b.kind];
+    return { downtown: "Downtown", midtown: "Midtown", residential: "Palm Heights", beach: "Ocean Boulevard", park: city.test ? "Test Lawn" : "City Park", lot: "Test Ground", showroom: "Showroom" }[b.kind];
   }
   return "Outskirts";
 }
@@ -634,6 +658,7 @@ function updateSeq(dt) {
         m.add(headlight, headlight.target);
         seq = null;
         showVehicle(m.userData.type);
+        if (m.userData.label) m.userData.label.visible = false;
       }
     }
   } else {
@@ -645,11 +670,7 @@ function updateSeq(dt) {
       if (S.t > 0.5) {
         // hand the car back to the traffic system as a parked car
         m.remove(headlight, headlight.target);
-        const car = { model: m, a: 0, b: 0, t: 0, speed: 0, cruise: 12, turn: null, knocked: null };
-        traffic.cars.push(car);
-        traffic.knock(car, new THREE.Vector3());
-        car.knocked.spin = 0;
-        S.car = car;
+        S.car = traffic.adopt(m, null, !!m.userData.showroom);
         driven = null;
         scene.attach(playerModel);
         const rest = playerModel.userData.rest;
@@ -668,14 +689,52 @@ function updateSeq(dt) {
       walker.auto(dt, faceOut, "idle");
       if (S.t > 0.15) walker.anim.setLead("R", handle());
       setDoor(m, 1 - ease((S.t - 0.2) / 0.4));
-      if (S.t > 0.65) { setDoor(m, 0); walker.anim.setLead(null); seq = null; }
+      if (S.t > 0.65) { setDoor(m, 0); walker.anim.setLead(null); seq = null; if (m.userData.label) m.userData.label.visible = true; }
     }
     // keep the parked car from sliding while the door is open
     if (S.car) S.car.knocked.vel.set(0, 0, 0);
   }
 }
 
+// ---------- floating labels (showroom) and speech bubbles ----------
+function makeLabel(title, sub) {
+  const c = document.createElement("canvas");
+  c.width = 512; c.height = 128;
+  const x = c.getContext("2d");
+  x.fillStyle = "rgba(8,10,16,.78)";
+  x.beginPath(); if (x.roundRect) x.roundRect(8, 8, 496, 112, 22); else x.rect(8, 8, 496, 112); x.fill();
+  x.fillStyle = "#fff"; x.font = "900 46px Inter, Arial, sans-serif"; x.textAlign = "center";
+  x.fillText(title.length > 22 ? title.slice(0, 21) + "…" : title, 256, 66);
+  x.fillStyle = "#ff8fb0"; x.font = "800 24px Inter, Arial, sans-serif";
+  x.fillText(sub.toUpperCase(), 256, 102);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: t, depthWrite: false }));
+  sp.scale.set(3.2, 0.8, 1);
+  return sp;
+}
+const bubbles = [];
+const _bp = new THREE.Vector3();
+function drawBubbles() {
+  let n = 0;
+  for (const p of peds.list) {
+    if (!p.say || p.dead) continue;
+    _bp.copy(p.model.position).setY(p.model.position.y + 2.15);
+    if (_bp.distanceTo(camera.position) > 35) continue;
+    _bp.project(camera);
+    if (_bp.z > 1) continue;
+    let el = bubbles[n];
+    if (!el) { el = document.createElement("div"); el.className = "bubble"; $("#hud").appendChild(el); bubbles.push(el); }
+    if (el.textContent !== p.say.text) el.textContent = p.say.text;
+    el.style.display = "block";
+    el.style.transform = `translate(${(_bp.x * 0.5 + 0.5) * innerWidth}px, ${(-_bp.y * 0.5 + 0.5) * innerHeight}px) translate(-50%, -100%)`;
+    n++;
+  }
+  for (let i = n; i < bubbles.length; i++) bubbles[i].style.display = "none";
+}
+
 // ---------- HUD helpers ----------
+let routeT = 0;
 let helpKey = null, helpT = 0, areaTO = 0, vehTO = 0, flashA = 0, stamina = 100, activeTab = "map";
 function help(html, seconds = 5, key = html) {
   const el = $("#help");
@@ -696,12 +755,16 @@ function showVehicle(type) {
 // first-time tips, one after another
 const TUTORIAL = [
   [`Use <img src="ui/keyboard_w.png" alt="W"><img src="ui/keyboard_a.png" alt="A"><img src="ui/keyboard_s.png" alt="S"><img src="ui/keyboard_d.png" alt="D"> to move and the mouse to look around. Hold <img src="ui/keyboard_shift.png" alt="Shift"> to sprint.`, 7],
-  [`The McLaren at the curb is yours. Walk up to it and press <img src="ui/keyboard_f.png" alt="F">.`, 7],
+  [`The McLaren at the curb is yours. Walk up to it and press <img src="ui/keyboard_f.png" alt="F">.`, 7, "city"],
+  [`Every car is parked in the showroom next to you. Walk up to one and press <img src="ui/keyboard_f.png" alt="F">.`, 7, "test"],
+  [`The coloured lines show where each AI car is heading. A red line means it just found a new route.`, 7, "test"],
+  [`Walk up to anyone and press <img src="ui/keyboard_e.png" alt="E"> to talk. Bug them too much and the tough ones fight back.`, 7],
   [`Press <img src="ui/keyboard_escape.png" alt="Esc"> to pause, see the map and generate a new city.`, 6],
 ];
 function runTutorial() {
+  const steps = TUTORIAL.filter((t) => !t[2] || t[2] === (city.test ? "test" : "city"));
   let i = 0;
-  const step = () => { if (i < TUTORIAL.length && state === "play") { if (helpKey !== "car") help(TUTORIAL[i][0], TUTORIAL[i][1]); setTimeout(step, (TUTORIAL[i++][1] + 1) * 1000); } };
+  const step = () => { if (i < steps.length && state === "play") { if (helpKey !== "car" && helpKey !== "ped") help(steps[i][0], steps[i][1]); setTimeout(step, (steps[i++][1] + 1) * 1000); } };
   setTimeout(step, 800);
 }
 
@@ -758,6 +821,7 @@ function attract(dt) {
   camera.lookAt(c.x, 30, c.z);
   camera.fov = 55; camera.updateProjectionMatrix();
   traffic.update(dt, null, null, peds.positions());
+  if ((routeT -= dt) <= 0 && traffic.routeLines) { routeT = 0.12; traffic.drawRoutes(); }
   peds.update(dt, null, null, null, camera.position);
   stepPhysics(dt);
 }
@@ -859,7 +923,7 @@ function buildUI() {
 let lastSig = "";
 
 // small console hook for testing: fruti.setHour(22)
-window.fruti = { setHour: (h) => { hours = h; envHour = -99; }, get state() { return state; }, get world() { return { peds, walker, traffic, physics, camera, cam, seqPhase: seq?.phase, seqT: seq?.t, seqModel: seq?.model, drivenHeading: driven?.heading }; } };
+window.fruti = { setHour: (h) => { hours = h; envHour = -99; }, get state() { return state; }, get world() { return { city, peds, walker, traffic, physics, camera, cam, seqPhase: seq?.phase, seqT: seq?.t, seqModel: seq?.model, drivenHeading: driven?.heading }; } };
 
 boot().catch((e) => {
   console.error(e);

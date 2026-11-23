@@ -321,6 +321,17 @@ export class Walker {
   }
 }
 
+// ---------------- what people say ----------------
+const LINES = {
+  greet: ["Hey!", "Nice day, huh?", "Morning!", "Love that shirt.", "Hot one today.", "Yo.", "Watch where you're going.", "Beach later?"],
+  talk: ["I'm just heading to the beach.", "Have you seen the McLaren in the showroom?", "Traffic's crazy on this street.", "My cousin drives a cab here.", "You lost? The beach is east.", "I heard they're building more towers downtown.", "Nice to meet you!", "Can't talk, I'm late."],
+  annoyed: ["Okay, that's enough.", "Do I know you?", "Leave me alone, man.", "Seriously?"],
+  fight: ["That's it!", "You want some?", "Come on then!", "Big mistake."],
+  scared: ["Help!", "Somebody call the cops!", "Run!", "Are you crazy?!"],
+  hit: ["Ow!", "Hey!", "What the—", "Ugh!"],
+};
+const pickLine = (k) => LINES[k][Math.floor(Math.random() * LINES[k].length)];
+
 // ---------------- pedestrians ----------------
 const BODIES = [0x8d5524, 0xc68642, 0xe0ac69, 0xf1c27d, 0xd9d3ca, 0x6b4226, 0xb9c4d0];
 const JOINTS = [0xff6f91, 0x4cc9f0, 0xf7b801, 0xffffff, 0x80ed99, 0xb5179e, 0xff8c42, 0x3a86ff, 0x2c3038, 0xf72585];
@@ -381,7 +392,11 @@ export class Pedestrians {
   panic(at, radius = 22, except = null) {
     for (const p of this.list) {
       if (p.dead || p === except || p.hostile) continue;
-      if (p.model.position.distanceTo(at) < radius) p.flee = { t: this.rng.range(6, 10), from: at.clone() };
+      if (p.model.position.distanceTo(at) < radius) {
+        p.flee = { t: this.rng.range(6, 10), from: at.clone() };
+        p.talk = null;
+        if (Math.random() < 0.35) this.say(p, pickLine("scared"), 2.5);
+      }
     }
   }
   // Ragdoll death. vel: body velocity (m/s); hit: optional {part, J (impulse vector), point}.
@@ -403,6 +418,8 @@ export class Pedestrians {
     if (p.health <= 0) this.kill(p, _v.copy(dir).multiplyScalar(2.5).setY(0.6), { part: "head", J: dir.clone().multiplyScalar(45).setY(8), point: head });
     else {
       p.model.userData.anim.applyImpulse(dir, 150, "head");
+      this.say(p, pickLine("hit"), 1.5);
+      p.talk = null;
       if (p.tough) { this.provoke(p); this.panic(p.model.position, 14, p); }
       else { this.panic(p.model.position, 18); p.flee = { t: 9, from: p.model.position.clone().sub(dir) }; }
     }
@@ -419,7 +436,34 @@ export class Pedestrians {
     else if (speed > 6) p.flee = { t: 5, from: p.model.position.clone().addScaledVector(_d, -1) };
   }
   // Turn on the player: run over, square up, throw punches.
-  provoke(p) { if (!p.dead) { p.hostile = { t: 25, cd: 0.6, swing: -1 }; p.flee = null; } }
+  provoke(p) { if (!p.dead) { p.hostile = { t: 25, cd: 0.6, swing: -1 }; p.flee = null; p.talk = null; this.say(p, pickLine("fight")); } }
+  // A speech bubble over their head for a few seconds (drawn by the HUD).
+  say(p, text, seconds = 3) { p.say = { text, t: seconds }; }
+  // The player talks to them: they stop, turn to you and answer. Pester them and they get fed up.
+  talkTo(p) {
+    if (p.dead || p.hostile) return;
+    p.talks = (p.talks || 0) + 1;
+    if (p.talks >= 4) {
+      if (p.tough) return this.provoke(p);
+      this.say(p, pickLine("annoyed"));
+      p.talk = null;
+      p.flee = { t: 3, from: p.model.position.clone() };
+      return;
+    }
+    p.flee = null;
+    p.talk = { t: 5 };
+    this.say(p, p.talks >= 3 ? pickLine("annoyed") : pickLine("talk"), 4);
+  }
+  // nearest living pedestrian within reach of a point
+  nearest(pos, r = 2.4) {
+    let best = null, bd = r;
+    for (const p of this.list) {
+      if (p.dead) continue;
+      const d = p.model.position.distanceTo(pos);
+      if (d < bd) { bd = d; best = p; }
+    }
+    return best;
+  }
   // Keep pedestrians from walking through each other.
   separate() {
     const L = this.list;
@@ -465,7 +509,18 @@ export class Pedestrians {
       }
       if (camPos && pos.distanceToSquared(camPos) > ANIM_RANGE * ANIM_RANGE) continue;
       const an = p.model.userData.anim;
-      if (p.hostile) {
+      if (p.say && (p.say.t -= dt) <= 0) p.say = null;
+      if (p.talk && player) {
+        // stand and face the player while talking
+        p.talk.t -= dt;
+        steer(p.model, Math.atan2(player.x - pos.x, player.z - pos.z), "idle");
+        if (p.talk.t <= 0 || pos.distanceTo(player) > 6) p.talk = null;
+      } else if (!p.hostile && !p.flee && player && !p.say && pos.distanceToSquared(player) < 9 && Math.random() < dt * 0.25) {
+        this.say(p, pickLine("greet"), 2.5); // say hi in passing
+      }
+      if (p.talk) {
+        // (handled above)
+      } else if (p.hostile) {
         const H = p.hostile;
         H.t -= dt; H.cd -= dt;
         const tx = player ? player.x : pos.x, tz = player ? player.z : pos.z;

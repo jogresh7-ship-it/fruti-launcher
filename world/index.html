@@ -70,6 +70,8 @@
     .sbar { width: 170px; height: 4px; margin: 8px 0 0 auto; background: rgba(255,255,255,.18); border-radius: 2px; overflow: hidden; }
     #speed-bar { height: 100%; width: 0; background: var(--sun); transition: width .15s linear; }
     #prompt { display: none; }
+    .bubble { position: absolute; left: 0; top: 0; max-width: 220px; padding: 8px 12px; border-radius: 14px; background: #fff; color: #111; font-weight: 700; font-size: 13px; line-height: 1.3; box-shadow: 0 6px 18px rgba(0,0,0,.35); white-space: normal; pointer-events: none; }
+    .bubble::after { content: ""; position: absolute; left: 50%; bottom: -6px; margin-left: -6px; border: 6px solid transparent; border-bottom: 0; border-top-color: #fff; }
     #wasted { position: fixed; inset: 0; z-index: 12; display: grid; place-items: center; pointer-events: none; opacity: 0; transition: opacity 1.2s ease .6s; }
     body.wasted #wasted { opacity: 1; }
     #wasted div { width: 100%; padding: 26px 0; text-align: center; background: linear-gradient(90deg, transparent, rgba(0,0,0,.7) 25%, rgba(0,0,0,.7) 75%, transparent); }
@@ -170,6 +172,8 @@
     #tb-enter { right: max(24px, env(safe-area-inset-right)); bottom: 210px; }
     #tb-jump { right: max(104px, calc(env(safe-area-inset-right) + 80px)); bottom: 130px; }
     #tb-attack { right: max(184px, calc(env(safe-area-inset-right) + 160px)); bottom: 130px; }
+    #tb-talk { right: max(184px, calc(env(safe-area-inset-right) + 160px)); bottom: 52px; }
+    .touch.driving #tb-talk { display: none; }
     #tb-crouch { right: max(110px, calc(env(safe-area-inset-right) + 90px)); bottom: 52px; }
     #tb-gas, #tb-brake { display: none !important; }
     .touch.driving #tb-gas { display: grid !important; right: max(24px, env(safe-area-inset-right)); bottom: 120px; }
@@ -218,6 +222,7 @@
     <div class="tc tb" id="tb-gas" data-btn="gas"><img src="ui/icon_pedal.png" alt="Gas"></div>
     <div class="tc tb" id="tb-brake" data-btn="brake"><img src="ui/icon_pedal_brake.png" alt="Brake"></div>
     <div class="tc tb" id="tb-attack" data-btn="attack"><img src="ui/icon_hand.png" alt="Punch"></div>
+    <div class="tc tb sm" id="tb-talk" data-btn="talk"><img src="ui/icon_talk.png" alt="Talk"></div>
     <div class="tc tb sm" id="tb-crouch" data-btn="crouch"><img src="ui/icon_arrow.png" alt="Crouch" style="transform:rotate(90deg)"></div>
     <div class="tc tb sm" id="tb-menu" data-btn="menu"><img src="ui/icon_menu.png" alt="Menu"></div>
     <div class="tc tb sm" id="tb-map" data-btn="map"><img src="ui/icon_burst.png" alt="Map"></div>
@@ -253,6 +258,9 @@
               <button type="button" class="icon-btn" id="dice" title="Random seed">🎲</button>
             </div>
             <div id="seed-name" class="grad"></div>
+            <div class="field"><label>World type</label>
+              <select name="layout"><option value="test">Test Ground — roads, every car, AI traffic routes, people</option><option value="city">City — skyscrapers, hotels, houses</option></select>
+            </div>
             <div class="field"><label>City size <b id="v-size"></b></label><input type="range" name="size" min="5" max="16" step="1"></div>
             <div class="field"><label>Skyline height <b id="v-height"></b></label><input type="range" name="height" min="0.3" max="2.2" step="0.1"></div>
             <div class="field"><label>Building density <b id="v-density"></b></label><input type="range" name="density" min="0.2" max="1" step="0.05"></div>
@@ -294,6 +302,7 @@
             <div class="k"><img src="ui/keyboard_c.png" alt="C"></div><span>Crouch</span>
             <div class="k"><img src="ui/mouse_left.png" alt="Left click"><img src="ui/keyboard_q.png" alt="Q"></div><span>Punch</span>
             <div class="k"><img src="ui/keyboard_f.png" alt="F"></div><span>Get in / steal a car, get out</span>
+            <div class="k"><img src="ui/keyboard_e.png" alt="E"></div><span>Talk to someone nearby</span>
             <div class="k"><img src="ui/keyboard_h.png" alt="H"></div><span>Horn</span>
             <div class="k"><img src="ui/keyboard_v.png" alt="V"></div><span>Camera distance</span>
             <div class="k"><img src="ui/keyboard_m.png" alt="M"></div><span>Map</span>

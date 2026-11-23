@@ -167,8 +167,31 @@ export function generateCity(params, T, roadParts, mats) {
   const H = params.height;          // skyline multiplier
   const D = params.density;         // 0..1
 
+  const TEST = params.layout === "test";
+  const showroom = [];
   for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
     const bx0 = nodeX(i) + ROAD_W / 2, bz0 = nodeX(j) + ROAD_W / 2, bx1 = bx0 + L, bz1 = bz0 + L;
+    if (TEST) {
+      // Test ground: no buildings at all — open lots, a few lawns, and one showroom lot by the beach
+      const isShow = i === N - 1 && j === Math.floor(N / 2);
+      const kind = isShow ? "showroom" : rng.chance(0.3) ? "park" : "lot";
+      blocks.push({ i, j, x0: bx0, z0: bz0, x1: bx1, z1: bz1, kind });
+      if (kind === "park") {
+        ground("grass", bx0, bz0, bx1, bz1);
+        const np = Math.round(rng.int(3, 7) * params.palms);
+        for (let k = 0; k < np; k++) palms.push({ x: rng.range(bx0 + 4, bx1 - 4), z: rng.range(bz0 + 4, bz1 - 4) });
+      } else {
+        ground("plaza", bx0, bz0, bx1, bz1);
+        // painted parking bays
+        const bays = kind === "showroom" ? 9 : 0;
+        for (let k = 0; k < bays; k++) {
+          const z = bz0 + 3.4 + k * ((L - 6.8) / (bays - 1));
+          showroom.push({ x: bx1 - 7, z, h: Math.PI / 2 });
+          bag("trim").box(bx1 - 12, z - 3.1, bx1 - 1.5, z - 2.95, 0.087, 0.1, hexColor("#f2f2f2"), 2);
+        }
+      }
+      continue;
+    }
     let kind = district(i, j);
     if (kind !== "beach" && rng.chance(0.07 + (1 - D) * 0.2)) kind = "park";
     blocks.push({ i, j, x0: bx0, z0: bz0, x1: bx1, z1: bz1, kind });
@@ -389,7 +412,7 @@ export function generateCity(params, T, roadParts, mats) {
 
   return {
     group, colliders, blocks, nodes, nodeX, N, P, L, half,
-    spawn, neonLights, islands,
+    spawn, neonLights, islands, showroom, test: TEST,
     bounds: { x0: landX0, z0: landZ0, x1: landX1, z1: landZ1 },
     beachY, shoreX, landX1,
     downtown: { x: nodeX(0) + dc.i * P, z: nodeX(0) + dc.j * P },

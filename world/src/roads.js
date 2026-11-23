@@ -21,7 +21,7 @@ export async function loadRoads(maxAniso) {
     if (mats[m.name]) return mats[m.name];
     const map = m.map;
     map.anisotropy = maxAniso;
-    return (mats[m.name] = new THREE.MeshStandardMaterial({ map, roughness: 0.82, metalness: 0 }));
+    return (mats[m.name] = new THREE.MeshStandardMaterial({ map, roughness: 0.82, metalness: 0, side: THREE.DoubleSide })); // some pack faces point down
   };
 
   const W0 = 37.916; // pack road width in meters (incl. sidewalks)
@@ -37,6 +37,11 @@ export async function loadRoads(maxAniso) {
       geo.computeBoundingSphere();
       out.push({ geometry: geo, material: matFor(o.material) });
     });
+    // each piece is authored away from the origin (laid out side by side in the pack): centre it
+    const box = new THREE.Box3();
+    for (const p of out) { p.geometry.computeBoundingBox(); box.union(p.geometry.boundingBox); }
+    const c = box.getCenter(new THREE.Vector3());
+    for (const p of out) { p.geometry.translate(-c.x, 0, -c.z); p.geometry.computeBoundingSphere(); }
     return out;
   };
   const straight = piece("Road_1X_Straight", 0.0);
