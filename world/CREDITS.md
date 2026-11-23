@@ -5,3 +5,8 @@
 - **Textures:** Red Brick, White Stucco, White Stucco 02, Grass Ground, Patterned Brick Floor and Ganges River Pebbles PBR sets (downscaled to 1K)
 - **UI:** Kenney "Mobile Controls" and "Input Prompts" (CC0) — `ui/`
 - **Engine:** three.js (MIT)
+- **Cars** (Sketchfab; simplified and compressed for the browser; non-commercial licenses — see `assets/cars/LICENSE-*.txt`):
+  - "2020 Chevrolet Silverado 1500 RST" by Outlaw Games™, CC-BY-NC-4.0
+  - "2023 Lamborghini Urus Performante" by Outlaw Games™, CC-BY-NC-4.0
+  - "2024 BYD Seal" by Ddiaz Design, CC-BY-NC-SA-4.0
+  - "McLaren F1 1993" by Alex.Ka., CC-BY-NC-4.0

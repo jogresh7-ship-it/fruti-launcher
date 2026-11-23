@@ -88,7 +88,32 @@ export class Walker {
     this.model.position.set(p.x, this.ground(p.x, p.z), p.z);
     rigAnimator(this.model, heading, this.ground, { agility: 1.8 });
   }
+  get down() { return !!this.fall; }
+  // Thrown by a car: fly, tumble, land on the back, then get up again.
+  knock(vel) {
+    if (this.fall) return;
+    this.model.rotation.order = "YXZ";
+    this.fall = { t: 0, vel: vel.clone(), spin: -5 - vel.length() * 0.2, heading: this.facing };
+  }
+  updateFall(dt, grid, bounds) {
+    const f = this.fall, pos = this.pos;
+    f.t += dt;
+    pos.addScaledVector(f.vel, dt);
+    f.vel.y -= 18 * dt;
+    const gy = this.ground(pos.x, pos.z) + 0.1;
+    if (pos.y < gy) { pos.y = gy; f.vel.x *= 0.55; f.vel.z *= 0.55; f.vel.y = Math.abs(f.vel.y) * 0.25; }
+    if (pos.y > gy + 0.1 || f.t < 0.3) this.model.rotation.x += f.spin * dt;
+    else this.model.rotation.x += (-Math.PI / 2 - this.model.rotation.x) * Math.min(1, dt * 8);
+    grid.resolveCircle(pos, 0.4, 0.5);
+    clampXZ(pos, bounds);
+    if (f.t > 2.8) { // get back up
+      this.model.rotation.set(0, 0, 0);
+      this.fall = null;
+      this.teleport(pos, f.heading);
+    }
+  }
   update(dt, input, camYaw, grid, bounds) {
+    if (this.fall) { this.updateFall(dt, grid, bounds); return; }
     const fx = -Math.sin(camYaw), fz = -Math.cos(camYaw);
     // camera right vector is (-fz, fx)
     const mx = fx * input.y - fz * input.x;
@@ -104,6 +129,8 @@ export class Walker {
     clampXZ(this.pos, bounds);
   }
 }
+
+const _d = new THREE.Vector3(), _h = new THREE.Vector3();
 
 // ---------------- pedestrians ----------------
 const BODIES = [0x8d5524, 0xc68642, 0xe0ac69, 0xf1c27d, 0xd9d3ca, 0x6b4226, 0xb9c4d0];
@@ -140,7 +167,34 @@ export class Pedestrians {
     ped.model.position.set(x, 0.08, z);
     rigAnimator(ped.model, Math.atan2(nx - x, nz - z), flat, { seed: ped.seed });
   }
-  update(dt, car, carVel, onHit, camPos) {
+  // Someone (the player) shoved this pedestrian: a stagger from the animator, or a fall when hard.
+  bump(p, dirX, dirZ, speed) {
+    if (p.dead) return;
+    if (speed > 6.5) {
+      p.model.rotation.order = "YXZ";
+      p.dead = { t: 0, vel: new THREE.Vector3(dirX * speed * 0.5, 2.5, dirZ * speed * 0.5), spin: -4 };
+      return;
+    }
+    p.bumpCD = p.bumpCD || 0;
+    if (performance.now() < p.bumpCD) return;
+    p.bumpCD = performance.now() + 500;
+    p.model.userData.anim.applyImpulse(_d.set(dirX, 0, dirZ), 40 + speed * 28, "chest");
+  }
+  // Keep pedestrians from walking through each other.
+  separate() {
+    const L = this.list;
+    for (let i = 0; i < L.length; i++) for (let j = i + 1; j < L.length; j++) {
+      if (L[i].dead || L[j].dead) continue;
+      const a = L[i].model.position, b = L[j].model.position;
+      const dx = b.x - a.x, dz = b.z - a.z, d2 = dx * dx + dz * dz;
+      if (d2 < 0.49 && d2 > 1e-6) {
+        const d = Math.sqrt(d2), push = (0.7 - d) / 2;
+        a.x -= (dx / d) * push; a.z -= (dz / d) * push; b.x += (dx / d) * push; b.z += (dz / d) * push;
+      }
+    }
+  }
+  update(dt, car, carVel, onHit, camPos, player) {
+    this.separate();
     for (const p of this.list) {
       const pos = p.model.position;
       if (p.dead) {
@@ -165,8 +219,19 @@ export class Pedestrians {
       // walk toward a point a few meters ahead on the loop
       let [tx, tz, per] = this.loopPoint(p, p.u);
       if (Math.hypot(tx - pos.x, tz - pos.z) < 2.2) { p.u += (p.dir * 2.5) / per; [tx, tz] = this.loopPoint(p, p.u); }
+      const an = p.model.userData.anim;
       steer(p.model, Math.atan2(tx - pos.x, tz - pos.z), p.mode);
-      p.model.userData.anim.update(dt);
+      // look at the player when close; flinch from a car speeding at them
+      if (player && pos.distanceToSquared(player) < 49) an.setLookTarget(_h.set(player.x, player.y + 1.6, player.z));
+      else an.setLookTarget(null);
+      p.flinchCD = Math.max(0, (p.flinchCD || 0) - dt);
+      if (car && carVel && !p.flinchCD) {
+        _d.subVectors(pos, car);
+        const dist = Math.hypot(_d.x, _d.z), sp = Math.hypot(carVel.x, carVel.z);
+        if (dist < 12 && sp > 6 && (_d.x * carVel.x + _d.z * carVel.z) / (dist * sp) > 0.7) { an.flinch(_h.set(car.x, car.y + 1, car.z)); p.flinchCD = 2; }
+      }
+      an.update(dt);
+      this.city.grid.resolveCircle(pos, 0.35, 0.5);
       if (car) {
         const dx = pos.x - car.x, dz = pos.z - car.z;
         const sp = carVel.length();

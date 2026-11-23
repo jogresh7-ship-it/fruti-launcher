@@ -23,7 +23,7 @@ export class Minimap {
     const fill = { park: "#2f6b3f", residential: "#36513c", downtown: "#3a4048", midtown: "#383e45", beach: "#3e3a44" };
     for (const bl of city.blocks) { x.fillStyle = fill[bl.kind]; x.fillRect(X(bl.x0), Z(bl.z0), (bl.x1 - bl.x0) * k, (bl.z1 - bl.z0) * k); }
     x.fillStyle = "#1c2126";
-    for (const cl of city.colliders) if (cl.h > 2) x.fillRect(X(cl.x0), Z(cl.z0), (cl.x1 - cl.x0) * k, (cl.z1 - cl.z0) * k);
+    for (const cl of city.colliders) if (cl.h > 2 && !cl.thin) x.fillRect(X(cl.x0), Z(cl.z0), (cl.x1 - cl.x0) * k, (cl.z1 - cl.z0) * k);
     // roads
     x.fillStyle = "#8a96a3";
     const n = city.N, lo = city.nodeX(0), hi = city.nodeX(n);

@@ -365,6 +365,9 @@ export function generateCity(params, T, roadParts, mats) {
   }
 
   // ---------- palms & lamps (instanced) ----------
+  // lamp posts and palm trunks are solid too
+  for (const l of lamps) colliders.push({ x0: l.x - 0.18, z0: l.z - 0.18, x1: l.x + 0.18, z1: l.z + 0.18, h: 7, thin: true });
+  for (const p of palms) colliders.push({ x0: p.x - 0.3, z0: p.z - 0.3, x1: p.x + 0.3, z1: p.z + 0.3, h: 8, thin: true });
   const palmMeshes = mats.palms(palms.map((p) => ({ ...p, y: p.y ?? 0.08 })), rng);
   palmMeshes.forEach((m) => group.add(m));
   const lampMeshes = mats.lamps(lamps);
@@ -442,7 +445,7 @@ export class ColliderGrid {
   }
   // Is the point inside a building (used to keep the camera out of walls)?
   inside(x, y, z) {
-    for (const b of this.near(x, z, 0.5)) if (x > b.x0 && x < b.x1 && z > b.z0 && z < b.z1 && y < b.h) return true;
+    for (const b of this.near(x, z, 0.5)) if (!b.thin && x > b.x0 && x < b.x1 && z > b.z0 && z < b.z1 && y < b.h) return true;
     return false;
   }
 }

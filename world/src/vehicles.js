@@ -2,7 +2,63 @@
 import * as THREE from "three";
 import { RoundedBoxGeometry } from "three/examples/jsm/geometries/RoundedBoxGeometry.js";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
+import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
+import { MeshoptDecoder } from "three/examples/jsm/libs/meshopt_decoder.module.js";
 import { ROAD_W, LANE } from "./city.js";
+import silveradoURL from "../assets/cars/silverado.glb";
+import sealURL from "../assets/cars/seal.glb";
+import urusURL from "../assets/cars/urus.glb";
+import f1URL from "../assets/cars/f1.glb";
+
+// Real car models (Sketchfab, CC-BY-NC — see assets/cars/LICENSE-*.txt), compressed with meshopt.
+const REAL = {
+  silverado: { url: silveradoURL, len: 5.9, max: 46, acc: 12 },
+  seal: { url: sealURL, len: 4.8, max: 62, acc: 17 },
+  urus: { url: urusURL, len: 5.1, max: 72, acc: 21 },
+  f1: { url: f1URL, len: 4.3, max: 90, acc: 26 },
+};
+const realTemplates = {};
+export async function loadRealCars() {
+  const loader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
+  for (const [name, r] of Object.entries(REAL)) {
+    const bin = Uint8Array.from(atob(r.url.slice(r.url.indexOf(",") + 1)), (c) => c.charCodeAt(0));
+    const gltf = await loader.parseAsync(bin.buffer, "");
+    const scene = gltf.scene;
+    scene.updateMatrixWorld(true);
+    const box = new THREE.Box3().setFromObject(scene), size = box.getSize(new THREE.Vector3()), c = box.getCenter(new THREE.Vector3());
+    const k = r.len / size.z;
+    const toCar = new THREE.Matrix4().makeScale(k, k, k).multiply(new THREE.Matrix4().makeTranslation(-c.x, -box.min.y, -c.z));
+    // bake transforms and merge everything that shares a material (fewer draw calls)
+    const groups = new Map();
+    scene.traverse((o) => {
+      if (!o.isMesh) return;
+      const g = o.geometry.clone();
+      for (const a of Object.keys(g.attributes)) if (!["position", "normal", "uv"].includes(a)) g.deleteAttribute(a);
+      if (!g.attributes.normal) g.computeVertexNormals();
+      if (!g.attributes.uv) g.setAttribute("uv", new THREE.Float32BufferAttribute(new Float32Array(g.attributes.position.count * 2), 2));
+      if (!g.index) g.setIndex([...Array(g.attributes.position.count).keys()]);
+      for (const a of ["position", "normal", "uv"]) if (g.attributes[a] && (g.attributes[a].isInterleavedBufferAttribute || g.attributes[a].normalized || !(g.attributes[a].array instanceof Float32Array))) {
+        const src = g.attributes[a], arr = new Float32Array(src.count * src.itemSize);
+        for (let i = 0; i < src.count; i++) for (let j = 0; j < src.itemSize; j++) arr[i * src.itemSize + j] = src.getComponent(i, j);
+        g.setAttribute(a, new THREE.BufferAttribute(arr, src.itemSize));
+      }
+      // (only now, in plain floats: quantized int16 positions would clip when transformed)
+      g.applyMatrix4(new THREE.Matrix4().multiplyMatrices(toCar, o.matrixWorld));
+      const m = o.material;
+      m.flatShading = false; m.needsUpdate = true;
+      if (!groups.has(m)) groups.set(m, []);
+      groups.get(m).push(g);
+    });
+    const root = new THREE.Group();
+    for (const [m, list] of groups) {
+      const mesh = new THREE.Mesh(mergeGeometries(list), m);
+      mesh.castShadow = true;
+      root.add(mesh);
+    }
+    realTemplates[name] = root;
+    TYPES[name] = { w: size.x * k, l: r.len, wr: 0.36, max: r.max, acc: r.acc, real: true };
+  }
+}
 
 const PAINTS = ["#f4f4f4", "#101418", "#c0c6cc", "#e63946", "#ff7eb6", "#2ec4b6", "#3a86ff", "#ffbe0b", "#8338ec", "#fb5607", "#0b3d91", "#2b9348", "#d4af37", "#ff4d6d"];
 
@@ -58,7 +114,14 @@ function carGeometry(typeName) {
 }
 
 export function makeCarModel(typeName, color) {
-  const t = TYPES[typeName], g = carGeometry(typeName), M = sharedMats();
+  const t = TYPES[typeName];
+  if (t.real) {
+    const root = new THREE.Group();
+    root.add(realTemplates[typeName].clone());
+    root.userData = { type: typeName, spec: t, wheels: [], wheelBase: t.l * 0.58 };
+    return root;
+  }
+  const g = carGeometry(typeName), M = sharedMats();
   const root = new THREE.Group();
   const add = (geo, mat) => { if (!geo) return; const me = new THREE.Mesh(geo, mat); me.castShadow = true; root.add(me); return me; };
   add(g.body, paintMat(t.color || color));
@@ -83,6 +146,7 @@ export function makeCarModel(typeName, color) {
 }
 
 export function randomCarType(rng) {
+  if (TYPES.urus && rng.chance(0.4)) return rng.pick(["silverado", "seal", "seal", "urus", "silverado", "f1"]);
   const r = rng.next();
   return r < 0.42 ? "sedan" : r < 0.58 ? "suv" : r < 0.72 ? "taxi" : r < 0.86 ? "sports" : "van";
 }
@@ -186,8 +250,8 @@ export class Traffic {
     const b = this.rng.pick(nodes[a].nb);
     return [a, b];
   }
-  spawn(avoid) {
-    const model = makeCarModel(randomCarType(this.rng), randomPaint(this.rng));
+  spawn(avoid, type) {
+    const model = makeCarModel(type || randomCarType(this.rng), randomPaint(this.rng));
     const car = { model, a: 0, b: 0, t: 0, speed: 0, cruise: this.rng.range(9, 15), turn: null, knocked: null };
     for (let tries = 0; tries < 10; tries++) {
       [car.a, car.b] = this.randomEdge();

@@ -34,7 +34,7 @@ import { buildTextures } from "./textures.js";
 import { makeMaterials } from "./materials.js";
 import { loadRoads } from "./roads.js";
 import { generateCity, ColliderGrid, cityName, ROAD_W } from "./city.js";
-import { Traffic, DrivenCar, makeCarModel, setCarNight } from "./vehicles.js";
+import { Traffic, DrivenCar, makeCarModel, setCarNight, loadRealCars } from "./vehicles.js";
 import { makePerson, Walker, Pedestrians, loadCharacter } from "./people.js";
 import { Input } from "./input.js";
 import { Sound } from "./audio.js";
@@ -198,6 +198,7 @@ let T, roads, mats, city, traffic, peds, minimap;
 let walker, playerModel, driven = null, state = "menu", limits, menuBlockUntil = 0;
 let hours = params.time;
 let cam = { yaw: 0.6, pitch: 0.28, dist: 5, far: false };
+let camY = null;
 let shake = 0, lastDistrict = "", districtTimer = 0;
 
 async function boot() {
@@ -205,6 +206,8 @@ async function boot() {
   T = await buildTextures({ brick: { diff: brickDiff, nor: brickNor, arm: brickArm }, stucco: { diff: stuccoDiff, nor: stuccoNor, arm: stuccoArm }, stucco2: { diff: stucco2Diff, nor: stucco2Nor, arm: stucco2Arm }, grass: { diff: grassDiff, nor: grassNor, arm: grassArm }, pavers: { diff: paversDiff, nor: paversNor, arm: paversArm }, pebbles: { diff: pebblesDiff, nor: pebblesNor, arm: pebblesArm } });
   setLoading("Loading characters…");
   await loadCharacter();
+  setLoading("Loading cars…");
+  await loadRealCars();
   setLoading("Loading road pack…");
   roads = await loadRoads(maxAniso);
   mats = makeMaterials(T);
@@ -248,7 +251,7 @@ async function generate() {
   scene.add(playerModel);
   walker = new Walker(playerModel, limits);
   walker.teleport(city.spawn, -Math.PI / 2);
-  const car = traffic.spawn();
+  const car = traffic.spawn(null, "f1");
   car.model.position.set(city.spawn.x - 4.4, 0.03, city.spawn.z - 3);
   car.model.rotation.y = Math.PI;
   traffic.knock(car, new THREE.Vector3());
@@ -366,20 +369,39 @@ function play(dt, inp) {
     if (inp.horn) traffic.cars.forEach((c) => { if (!c.knocked && c.model.position.distanceTo(driven.pos) < 30) c.cruise = Math.min(22, c.cruise + dt * 4); });
   } else {
     walker.update(dt, inp, cam.yaw, city.grid, limits);
-    // keep out of cars
+    // collide with cars; a moving one knocks the player down
     for (const c of traffic.cars) {
       const m = c.model, f = tmp.set(Math.sin(m.rotation.y), 0, Math.cos(m.rotation.y));
-      for (const o of [-1.2, 1.2]) {
+      const carSpeed = c.knocked ? c.knocked.vel.length() : c.speed;
+      for (const o of [-1.3, 0, 1.3]) {
         const cx = m.position.x + f.x * o, cz = m.position.z + f.z * o;
         const dx = walker.pos.x - cx, dz = walker.pos.z - cz, d = Math.hypot(dx, dz);
-        if (d < 1.4 && d > 1e-4 && (walker.jumpY || 0) < 1.2) { walker.pos.x = cx + (dx / d) * 1.4; walker.pos.z = cz + (dz / d) * 1.4; }
+        if (d < 1.35 && d > 1e-4 && walker.pos.y < 1.3) {
+          walker.pos.x = cx + (dx / d) * 1.35; walker.pos.z = cz + (dz / d) * 1.35;
+          if (carSpeed > 4 && !walker.down) {
+            const v = c.knocked ? c.knocked.vel.clone() : f.clone().multiplyScalar(carSpeed);
+            walker.knock(v.multiplyScalar(0.8).add(new THREE.Vector3(dx / d * 2, 3 + carSpeed * 0.2, dz / d * 2)));
+            sound.crash(carSpeed); shake = 0.6;
+          }
+        }
+      }
+    }
+    // shove pedestrians out of the way (sprinting into them makes them stagger or fall)
+    if (!walker.down) for (const pd of peds.list) {
+      if (pd.dead) continue;
+      const q = pd.model.position, dx = q.x - walker.pos.x, dz = q.z - walker.pos.z, d2 = dx * dx + dz * dz;
+      if (d2 < 0.62 && d2 > 1e-6) {
+        const d = Math.sqrt(d2), push = 0.79 - d;
+        q.x += (dx / d) * push * 0.6; q.z += (dz / d) * push * 0.6;
+        walker.pos.x -= (dx / d) * push * 0.4; walker.pos.z -= (dz / d) * push * 0.4;
+        if (walker.speed > 1.2) peds.bump(pd, dx / d, dz / d, walker.speed);
       }
     }
   }
   if (hit > 6) { sound.crash(hit); shake = Math.min(1, hit / 25); }
 
   // enter / exit vehicles
-  const near = nearestCar();
+  const near = walker.down ? null : nearestCar();
   if (inp.enter) {
     if (driven) exitCar();
     else if (near) enterCar(near);
@@ -387,7 +409,7 @@ function play(dt, inp) {
   setPrompt(!driven && near ? "enter" : null);
 
   traffic.update(dt, driven ? null : walker.pos, driven ? driven.pos : null, peds.positions());
-  peds.update(dt, driven ? driven.pos : null, driven ? driven.vel : null, () => { sound.crash(8); }, camera.position);
+  peds.update(dt, driven ? driven.pos : null, driven ? driven.vel : null, () => { sound.crash(8); }, camera.position, driven ? null : walker.pos);
 
   if (inp.camera) cam.far = !cam.far;
   if (inp.map) $("#bigmap-wrap").classList.toggle("show");
@@ -469,7 +491,9 @@ function updateCamera(dt, inp) {
     camera.fov += (58 - camera.fov) * Math.min(1, dt * 3);
   }
   camera.updateProjectionMatrix();
-  camTarget.set(p.x, (walker && !driven ? walker.model.position.y : p.y) + height, p.z);
+  const ty = (walker && !driven ? walker.model.position.y : p.y) + height;
+  camY = camY == null || Math.abs(camY - ty) > 5 ? ty : camY + (ty - camY) * Math.min(1, dt * 7);
+  camTarget.set(p.x, camY, p.z);
   const cp = Math.cos(cam.pitch);
   const dir = tmp.set(Math.sin(cam.yaw) * cp, Math.sin(cam.pitch), Math.cos(cam.yaw) * cp);
   // pull the camera in front of walls
