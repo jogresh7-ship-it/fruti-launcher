@@ -39,8 +39,87 @@ export function makePerson({ body = 0xd9d3ca, joints = 0x2c3038 } = {}) {
     o.material = /joint/i.test(o.material?.name || "") ? mat(joints, 0.45, 0.2) : mat(body, 0.55);
   });
   root.add(model);
-  root.userData = { model, anim: null };
+  // bones by plain Mixamo name ("LeftUpLeg"), and their rest (T-pose) rotations
+  const bones = {}, rest = new Map();
+  model.traverse((o) => { if (o.isBone) { bones[o.name.replace(/^mixamorig:?/, "")] = o; rest.set(o, o.quaternion.clone()); } });
+  root.userData = { model, anim: null, bones, rest };
   return root;
+}
+
+// ---------------- sitting in a car ----------------
+// Rotate `bone` (in world space) so the direction to `child` points along `dir`.
+const _a = new THREE.Vector3(), _b = new THREE.Vector3(), _q1 = new THREE.Quaternion(), _q2 = new THREE.Quaternion(), _q3 = new THREE.Quaternion();
+function aim(bone, child, dir) {
+  bone.updateWorldMatrix(true, true);
+  bone.getWorldPosition(_a); child.getWorldPosition(_b);
+  const cur = _b.sub(_a).normalize();
+  _q1.setFromUnitVectors(cur, dir.clone().normalize());
+  bone.getWorldQuaternion(_q2);
+  _q2.premultiply(_q1);
+  bone.parent.getWorldQuaternion(_q3).invert();
+  bone.quaternion.copy(_q3.multiply(_q2));
+  bone.updateWorldMatrix(false, true);
+}
+
+// Where the driver sits in a car (car-local) and how high the seat is for its roof line.
+export function seatLocal(car) {
+  const i = car.userData.doorInfo;
+  const y = THREE.MathUtils.clamp(i.height - 1.12, 0.16, 0.9);
+  return { seat: new THREE.Vector3(i.side - 0.52, y, i.front - i.len * 0.62), y };
+}
+
+// A seated driving pose for this person in this car: bone rotations + the root's place, computed
+// once with a few aim constraints (recline, thighs forward, shins down, hands on the wheel).
+export function seatedPose(person, car) {
+  const u = person.userData, B = u.bones;
+  const saved = new Map([...u.rest.keys()].map((b) => [b, b.quaternion.clone()]));
+  const savedPos = person.position.clone(), savedQ = person.quaternion.clone(), savedParent = person.parent;
+  car.updateMatrixWorld(true);
+  const { seat } = seatLocal(car);
+  const toW = (x, y, z) => new THREE.Vector3(x, y, z).applyQuaternion(car.quaternion);
+  const fwd = toW(0, 0, 1), up = new THREE.Vector3(0, 1, 0), left = toW(1, 0, 0);
+  // start from the rest pose, facing the way the car faces, hips on the seat
+  for (const [b, q] of u.rest) b.quaternion.copy(q);
+  person.quaternion.copy(car.quaternion);
+  person.position.set(0, 0, 0);
+  person.updateMatrixWorld(true);
+  const hipsW = B.Hips.getWorldPosition(new THREE.Vector3());
+  const seatW = car.localToWorld(seat.clone());
+  person.position.add(seatW.clone().sub(hipsW)); // move the root so the hips land on the seat
+  person.updateMatrixWorld(true);
+  // torso leans back a little, head looks ahead
+  aim(B.Spine, B.Neck, up.clone().multiplyScalar(0.96).addScaledVector(fwd, -0.28));
+  aim(B.Neck, B.Head, up.clone().addScaledVector(fwd, 0.1));
+  // legs: thighs forward, shins down to the pedals
+  for (const [s, sx] of [["Left", 1], ["Right", -1]]) {
+    aim(B[s + "UpLeg"], B[s + "Leg"], fwd.clone().addScaledVector(up, -0.12).addScaledVector(left, sx * 0.12));
+    aim(B[s + "Leg"], B[s + "Foot"], up.clone().multiplyScalar(-0.75).addScaledVector(fwd, 0.62));
+  }
+  // arms: elbows down, hands at 10 and 2 on the wheel
+  const wheel = car.localToWorld(seat.clone().add(new THREE.Vector3(0, 0.6, 0.5)));
+  for (const [s, sx] of [["Left", 1], ["Right", -1]]) {
+    const grip = wheel.clone().addScaledVector(left, sx * 0.19);
+    const sh = B[s + "Arm"].getWorldPosition(new THREE.Vector3());
+    const elbow = sh.clone().lerp(grip, 0.5).addScaledVector(up, -0.16).addScaledVector(left, sx * 0.08);
+    aim(B[s + "Arm"], B[s + "ForeArm"], elbow.clone().sub(sh));
+    aim(B[s + "ForeArm"], B[s + "Hand"], grip.clone().sub(elbow));
+  }
+  const pose = { bones: new Map([...u.rest.keys()].map((b) => [b, b.quaternion.clone()])), pos: person.position.clone(), quat: person.quaternion.clone() };
+  // put everything back as it was
+  for (const [b, q] of saved) b.quaternion.copy(q);
+  person.position.copy(savedPos); person.quaternion.copy(savedQ);
+  if (savedParent !== person.parent) savedParent?.add(person);
+  person.updateMatrixWorld(true);
+  return pose;
+}
+
+// Snapshot of the current local bone rotations (to blend from).
+export function poseSnapshot(person) {
+  return new Map([...person.userData.rest.keys()].map((b) => [b, b.quaternion.clone()]));
+}
+// Blend bones between two snapshots (u = 0..1).
+export function blendPose(person, from, to, u) {
+  for (const [b, q] of from) b.quaternion.slerpQuaternions(q, to.get(b) || q, u);
 }
 
 // (Re)build the ragphys procedural animator for a person standing at its root. The animator
@@ -170,6 +249,14 @@ export class Walker {
     return true;
   }
   get dead() { return this.health <= 0; }
+  // Punched by someone: a stagger from the animator and some damage.
+  hit(dir, damage) {
+    if (this.fall || this.dead) return;
+    this.health = Math.max(0, this.health - damage);
+    this.hurtT = 0;
+    if (this.health <= 0) this.knock(_v.copy(dir).multiplyScalar(2.5).setY(1), 0);
+    else this.anim.applyImpulse(dir, 170, "head");
+  }
   // Hit by a car: a real ragdoll fall, then get back up where the body landed (unless it killed you).
   knock(vel, damage = 0) {
     if (this.fall || !this.physics) return;
@@ -247,7 +334,7 @@ export class Pedestrians {
     this.list = [];
     for (let k = 0; k < count; k++) {
       const m = makePerson({ body: rng.pick(BODIES), joints: rng.pick(JOINTS) });
-      const ped = { model: m, b: rng.pick(city.blocks), off: 1.3 + rng.range(-0.4, 0.6), u: rng.next(), dir: rng.chance(0.5) ? 1 : -1, mode: rng.chance(0.85) ? "walk" : "run", dead: null, flee: null, health: 100, seed: k + 1 };
+      const ped = { model: m, b: rng.pick(city.blocks), off: 1.3 + rng.range(-0.4, 0.6), u: rng.next(), dir: rng.chance(0.5) ? 1 : -1, mode: rng.chance(0.85) ? "walk" : "run", dead: null, flee: null, health: 100, seed: k + 1, tough: rng.chance(0.35) };
       this.spawnOnLoop(ped);
       scene.add(m);
       this.list.push(ped);
@@ -290,10 +377,10 @@ export class Pedestrians {
     ped.model.position.set(x, 0.08, z);
     rigAnimator(ped.model, Math.atan2(nx - x, nz - z), flat, { seed: ped.seed });
   }
-  // Everyone near a scary event runs away from it.
-  panic(at, radius = 22) {
+  // Everyone near a scary event runs away from it (tough ones may join the fight instead).
+  panic(at, radius = 22, except = null) {
     for (const p of this.list) {
-      if (p.dead) continue;
+      if (p.dead || p === except || p.hostile) continue;
       if (p.model.position.distanceTo(at) < radius) p.flee = { t: this.rng.range(6, 10), from: at.clone() };
     }
   }
@@ -316,18 +403,23 @@ export class Pedestrians {
     if (p.health <= 0) this.kill(p, _v.copy(dir).multiplyScalar(2.5).setY(0.6), { part: "head", J: dir.clone().multiplyScalar(45).setY(8), point: head });
     else {
       p.model.userData.anim.applyImpulse(dir, 150, "head");
-      this.panic(p.model.position, 18);
-      p.flee = { t: 9, from: p.model.position.clone().sub(dir) };
+      if (p.tough) { this.provoke(p); this.panic(p.model.position, 14, p); }
+      else { this.panic(p.model.position, 18); p.flee = { t: 9, from: p.model.position.clone().sub(dir) }; }
     }
   }
-  // Someone (the player) shoved this pedestrian: a stagger from the animator.
+  // Someone (the player) shoved this pedestrian: a stagger, and they get annoyed —
+  // a tough one squares up after a couple of shoves.
   bump(p, dirX, dirZ, speed) {
     if (p.dead) return;
     if (performance.now() < (p.bumpCD || 0)) return;
     p.bumpCD = performance.now() + 500;
     p.model.userData.anim.applyImpulse(_d.set(dirX, 0, dirZ), 40 + speed * 28, "chest");
-    if (speed > 6) p.flee = { t: 5, from: p.model.position.clone().addScaledVector(_d, -1) };
+    p.annoyed = (p.annoyed || 0) + (speed > 4 ? 2 : 1);
+    if (p.tough && p.annoyed >= 2) this.provoke(p);
+    else if (speed > 6) p.flee = { t: 5, from: p.model.position.clone().addScaledVector(_d, -1) };
   }
+  // Turn on the player: run over, square up, throw punches.
+  provoke(p) { if (!p.dead) { p.hostile = { t: 25, cd: 0.6, swing: -1 }; p.flee = null; } }
   // Keep pedestrians from walking through each other.
   separate() {
     const L = this.list;
@@ -342,7 +434,8 @@ export class Pedestrians {
     }
   }
   afterPhysics() { for (const p of this.list) if (p.dead?.rd) followRagdoll(p.model, p.dead.rd); }
-  update(dt, car, carVel, onHit, camPos, player) {
+  // cars: [{x, z, h}] obstacles people walk around; me: the player Walker (for fights)
+  update(dt, car, carVel, onHit, camPos, player, cars = [], me = null) {
     this.separate();
     for (const p of this.list) {
       const pos = p.model.position;
@@ -372,7 +465,24 @@ export class Pedestrians {
       }
       if (camPos && pos.distanceToSquared(camPos) > ANIM_RANGE * ANIM_RANGE) continue;
       const an = p.model.userData.anim;
-      if (p.flee) {
+      if (p.hostile) {
+        const H = p.hostile;
+        H.t -= dt; H.cd -= dt;
+        const tx = player ? player.x : pos.x, tz = player ? player.z : pos.z;
+        const d = Math.hypot(tx - pos.x, tz - pos.z);
+        const face = Math.atan2(tx - pos.x, tz - pos.z);
+        if (!player || H.t <= 0 || d > 45 || (me && me.dead)) { p.hostile = null; p.annoyed = 0; this.rehome(p); }
+        else if (d > (me?.inCar ? 2.7 : 1.35)) steer(p.model, face, d > 4 ? "sprint" : "run");
+        else {
+          steer(p.model, face, "guard");
+          if (H.cd <= 0) { an.strike(); H.cd = 1.1 + Math.random() * 0.7; H.swing = 0.24; }
+        }
+        // the fist lands a moment into the swing
+        if (H.swing >= 0 && (H.swing -= dt) < 0 && me && !me.inCar && player && d < 1.6) {
+          me.hit(_d.set(tx - pos.x, 0, tz - pos.z).normalize(), 9 + Math.random() * 6);
+          this.onPlayerHit?.();
+        }
+      } else if (p.flee) {
         // sprint away from the threat, sliding along walls
         p.flee.t -= dt;
         let h = Math.atan2(pos.x - p.flee.from.x, pos.z - p.flee.from.z);
@@ -383,7 +493,7 @@ export class Pedestrians {
         // walk toward a point a few meters ahead on the loop
         let [tx, tz, per] = this.loopPoint(p, p.u);
         if (Math.hypot(tx - pos.x, tz - pos.z) < 2.2) { p.u += (p.dir * 2.5) / per; [tx, tz] = this.loopPoint(p, p.u); }
-        steer(p.model, Math.atan2(tx - pos.x, tz - pos.z), p.mode);
+        steer(p.model, Math.atan2(tx - pos.x, tz - pos.z) + (p.wallHit ? 1.1 * p.dir : 0), p.mode);
       }
       // look at the player when close; flinch from a car speeding at them
       if (player && pos.distanceToSquared(player) < 49) an.setLookTarget(_h.set(player.x, player.y + 1.6, player.z));
@@ -396,6 +506,18 @@ export class Pedestrians {
       }
       an.update(dt);
       p.wallHit = !!this.city.grid.resolveCircle(pos, 0.35, 0.5);
+      // walk around cars instead of through them (three circles along each car)
+      for (const c of cars) {
+        const fx = Math.sin(c.h), fz = Math.cos(c.h);
+        for (const o of [-1.4, 0, 1.4]) {
+          const cx = c.x + fx * o, cz = c.z + fz * o, dx = pos.x - cx, dz = pos.z - cz, d2 = dx * dx + dz * dz;
+          if (d2 < 1.6 * 1.6 && d2 > 1e-6) {
+            const d = Math.sqrt(d2);
+            pos.x = cx + (dx / d) * 1.6; pos.z = cz + (dz / d) * 1.6;
+            p.wallHit = true;
+          }
+        }
+      }
       // hit by the player's car: ragdoll
       if (car) {
         const dx = pos.x - car.x, dz = pos.z - car.z;

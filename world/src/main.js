@@ -35,7 +35,7 @@ import { makeMaterials } from "./materials.js";
 import { loadRoads } from "./roads.js";
 import { generateCity, ColliderGrid, cityName, ROAD_W } from "./city.js";
 import { Traffic, DrivenCar, makeCarModel, setCarNight, loadRealCars, setDoor, doorPoints } from "./vehicles.js";
-import { makePerson, Walker, Pedestrians, loadCharacter } from "./people.js";
+import { makePerson, Walker, Pedestrians, loadCharacter, seatedPose, poseSnapshot, blendPose } from "./people.js";
 import { Input } from "./input.js";
 import { Physics, loadRapier } from "./ragphys/physics.js";
 import { Sound } from "./audio.js";
@@ -54,6 +54,7 @@ try { Object.assign(params, JSON.parse(localStorage.getItem("fruti-world") || "{
 const save = () => { try { localStorage.setItem("fruti-world", JSON.stringify(params)); } catch (e) { /* ignore */ } };
 
 const QUALITY = {
+  perf: { pr: 0.55, shadows: 0, bloom: false, reflect: false, msaa: 0, post: false },
   low: { pr: 0.8, shadows: 0, bloom: false, reflect: false, msaa: 0 },
   high: { pr: 1.25, shadows: 2048, bloom: true, reflect: true, msaa: 4 },
   ultra: { pr: 2, shadows: 4096, bloom: true, reflect: true, msaa: 4 },
@@ -162,6 +163,9 @@ const GradeShader = {
 function setupQuality(name, T) {
   quality = QUALITY[name] || QUALITY.high;
   renderer.setPixelRatio(Math.min(devicePixelRatio, quality.pr));
+  camera.far = quality.post === false ? 1400 : 9000;
+  camera.updateProjectionMatrix();
+  stars.visible = quality.post !== false;
   renderer.shadowMap.enabled = quality.shadows > 0;
   sun.castShadow = quality.shadows > 0;
   if (sun.castShadow) {
@@ -269,6 +273,7 @@ async function generate() {
   peds = new Pedestrians(city, scene, rng, params.peds);
   peds.physics = physics;
   peds.onDeath = () => { stats.kos++; };
+  peds.onPlayerHit = () => { sound.crash(6); hurtFlash(); shake = 0.25; };
   seq = null; wastedT = -1; document.body.classList.remove("wasted");
   // player + a car waiting at the curb
   playerModel = makePerson({ body: 0xe8e2d8, joints: 0xff4f8b });
@@ -320,7 +325,7 @@ function updateSky(dt) {
   hemi.intensity = 0.15 + day * 0.7;
   hemi.color.setRGB(0.75 - night * 0.5, 0.86 - night * 0.55, 1 - night * 0.5);
   scene.fog.color.copy(FOG_DAY).lerp(FOG_SET, golden * 0.8).lerp(FOG_NIGHT, night);
-  scene.fog.density = 0.00045 + (1 - day) * 0.00025 + golden * 0.0002;
+  scene.fog.density = (0.00045 + (1 - day) * 0.00025 + golden * 0.0002) * (quality.post === false ? 3 : 1);
   renderer.toneMappingExposure = 0.82 + night * 0.25;
   skyNight.value = night;
   stars.material.opacity = night;
@@ -337,7 +342,7 @@ function updateSky(dt) {
   headlight.intensity = night * 120;
   grade.uniforms.uWarm.value = 1 - night * 0.7;
   // refresh reflections when the sky changed enough
-  if (Math.abs(hours - envHour) > 0.2) {
+  if (Math.abs(hours - envHour) > (quality.post === false ? 2 : 0.2)) {
     envHour = hours;
     envRT?.dispose();
     envRT = pmrem.fromScene(envScene, 0, 0.1, 1000);
@@ -367,7 +372,8 @@ function loop() {
   else if (state === "paused" && activeTab === "map") minimap.drawBig(focusPos(), driven ? driven.heading : walker.facing, $("#pmap"));
 
   const { night } = updateSky(dt);
-  composer.render();
+  if (quality.post === false) renderer.render(scene, camera);
+  else composer.render();
   document.body.classList.toggle("in-menu", state === "menu");
   document.body.classList.toggle("paused", state === "paused");
   if (state !== "menu") minimap.draw(focusPos(), cam.yaw, driven ? driven.heading : walker.facing, traffic.cars, hours);
@@ -383,7 +389,9 @@ function stepPhysics(dt) {
   peds.afterPhysics();
 }
 
-const focusPos = () => (driven ? driven.pos : walker.pos);
+const _fp = new THREE.Vector3();
+// what the camera and HUD follow: the car you drive, or your body (in world space, even mid get-in)
+const focusPos = () => (driven ? driven.pos : playerModel.parent === scene ? walker.pos : playerModel.getWorldPosition(_fp));
 
 const NO_INPUT = { x: 0, y: 0, sprint: false, jump: false, handbrake: false, enter: false, horn: false, crouch: false, attack: false };
 function play(realDt, inp) {
@@ -492,7 +500,10 @@ function play(realDt, inp) {
   else if (helpKey === "car") hideHelp();
 
   traffic.update(dt, driven ? null : walker.pos, driven ? driven.pos : null, peds.positions());
-  peds.update(dt, driven ? driven.pos : null, driven ? driven.vel : null, () => { sound.crash(8); }, camera.position, driven ? null : walker.pos);
+  walker.inCar = !!driven || (seq && seq.phase !== "walk");
+  const carObs = traffic.cars.map((c) => ({ x: c.model.position.x, z: c.model.position.z, h: c.model.rotation.y }));
+  if (driven) carObs.push({ x: driven.pos.x, z: driven.pos.z, h: driven.heading });
+  peds.update(dt, driven ? driven.pos : null, driven ? driven.vel : null, () => { sound.crash(8); }, camera.position, driven ? driven.pos : walker.pos, carObs, walker);
   stepPhysics(dt);
 
   if (inp.camera) cam.far = !cam.far;
@@ -558,27 +569,62 @@ function updateSeq(dt) {
   const S = seq, m = S.model;
   S.t += dt;
   const h = m.rotation.y;
-  const { outside, seat } = doorPoints(m);
+  const { outside } = doorPoints(m);
   const faceIn = Math.atan2(-Math.cos(h), Math.sin(h)), faceOut = Math.atan2(Math.cos(h), -Math.sin(h));
+  const qOf = (yaw) => new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), yaw);
   const next = (phase) => { S.phase = phase; S.t = 0; };
+  const info = m.userData.doorInfo, door = m.userData.door;
+  // the outside door handle, which moves with the door as it swings
+  const handle = () => (door ? door.localToWorld(new THREE.Vector3(0.05, info.height * 0.58, -info.len * 0.82)) : outside.clone().setY(1));
+  // blend the whole body from one pose + place to another (the animator is paused meanwhile)
+  const blendTo = (u) => {
+    blendPose(playerModel, S.from, S.to, u);
+    playerModel.position.lerpVectors(S.fromPos, S.toPos, u);
+    playerModel.quaternion.slerpQuaternions(S.fromQ, S.toQ, u);
+  };
   if (S.type === "enter") {
     if (S.phase === "walk") {
-      const dx = outside.x - walker.pos.x, dz = outside.z - walker.pos.z, d = Math.hypot(dx, dz);
-      if (d < 0.3 || S.t > 3) { walker.pos.x = outside.x; walker.pos.z = outside.z; next("open"); }
-      else walker.auto(dt, Math.atan2(dx, dz), d > 3 ? "run" : "walk", city.grid, limits);
+      // walk round the car (front or back, whichever is closer) to the driver's door — never through it
+      if (!S.path) {
+        const L = m.userData.spec.l / 2 + 1.1, side = info.side + 1.3;
+        const lp = m.worldToLocal(walker.pos.clone());
+        const end = lp.z > (info.front - info.len / 2) ? L : -L;
+        const pts = [];
+        if (lp.x < side - 0.4) {
+          if (lp.x < -info.side) pts.push(new THREE.Vector3(-side, 0, end));
+          pts.push(new THREE.Vector3(side, 0, end));
+        }
+        S.path = pts.map((v) => m.localToWorld(v));
+        S.path.push(outside);
+      }
+      const tgt = S.path[0];
+      const dx = tgt.x - walker.pos.x, dz = tgt.z - walker.pos.z, d = Math.hypot(dx, dz);
+      if (d < (S.path.length > 1 ? 0.8 : 0.3)) { S.path.shift(); if (!S.path.length) next("open"); }
+      else if (S.t > 8) next("open");
+      else walker.auto(dt, Math.atan2(dx, dz), Math.hypot(outside.x - walker.pos.x, outside.z - walker.pos.z) > 3 ? "run" : "walk", city.grid, limits);
+      // keep out of the car body
+      const f = new THREE.Vector3(Math.sin(h), 0, Math.cos(h));
+      for (const o of [-1.3, 0, 1.3]) {
+        const cx = m.position.x + f.x * o, cz = m.position.z + f.z * o;
+        const ex = walker.pos.x - cx, ez = walker.pos.z - cz, e = Math.hypot(ex, ez), r = info.side + 0.45;
+        if (e < r && e > 1e-4) { walker.pos.x = cx + (ex / e) * r; walker.pos.z = cz + (ez / e) * r; }
+      }
     } else if (S.phase === "open") {
+      // reach for the handle with the right hand, then pull the door open
+      walker.anim.setLead("R", handle());
       walker.auto(dt, faceIn, "idle");
       walker.pos.x += (outside.x - walker.pos.x) * Math.min(1, dt * 8); walker.pos.z += (outside.z - walker.pos.z) * Math.min(1, dt * 8);
-      setDoor(m, ease(S.t / 0.55));
-      if (S.t > 0.6) next("in");
+      setDoor(m, ease((S.t - 0.3) / 0.55));
+      if (S.t > 0.9) {
+        walker.anim.setLead(null);
+        const pose = seatedPose(playerModel, m);
+        Object.assign(S, { from: poseSnapshot(playerModel), to: pose.bones, fromPos: playerModel.position.clone(), toPos: pose.pos, fromQ: playerModel.quaternion.clone(), toQ: pose.quat });
+        next("in");
+      }
     } else if (S.phase === "in") {
-      const u = ease(S.t / 0.8);
-      walker.auto(dt, h, "crouch");
-      walker.pos.x = outside.x + (seat.x - outside.x) * u;
-      walker.pos.z = outside.z + (seat.z - outside.z) * u;
-      walker.pos.y = 0.04 - 0.75 * ease((S.t - 0.25) / 0.6); // sink down into the seat
-      if (u > 0.8) playerModel.visible = false;
-      if (S.t > 0.85) next("close");
+      // duck in: turn to face forward, lower onto the seat, legs in, hands to the wheel
+      blendTo(ease(S.t / 1.05));
+      if (S.t > 1.1) { blendTo(1); m.attach(playerModel); next("close"); }
     } else if (S.phase === "close") {
       setDoor(m, 1 - ease(S.t / 0.35));
       if (S.t > 0.38) {
@@ -597,7 +643,7 @@ function updateSeq(dt) {
     } else if (S.phase === "open") {
       setDoor(m, ease(S.t / 0.45));
       if (S.t > 0.5) {
-        // hand the car back to the traffic system as a parked car, and step out of it
+        // hand the car back to the traffic system as a parked car
         m.remove(headlight, headlight.target);
         const car = { model: m, a: 0, b: 0, t: 0, speed: 0, cruise: 12, turn: null, knocked: null };
         traffic.cars.push(car);
@@ -605,21 +651,24 @@ function updateSeq(dt) {
         car.knocked.spin = 0;
         S.car = car;
         driven = null;
-        walker.teleport(seat, faceOut);
-        playerModel.visible = true;
+        scene.attach(playerModel);
+        const rest = playerModel.userData.rest;
+        Object.assign(S, { from: poseSnapshot(playerModel), to: rest, fromPos: playerModel.position.clone(), toPos: outside.clone().setY(0.04), fromQ: playerModel.quaternion.clone(), toQ: qOf(faceOut) });
         next("out");
       }
     } else if (S.phase === "out") {
-      const u = ease(S.t / 0.7);
-      walker.auto(dt, faceOut, "idle");
-      walker.pos.x = seat.x + (outside.x - seat.x) * u;
-      walker.pos.z = seat.z + (outside.z - seat.z) * u;
-      walker.pos.y = 0.04 - 0.75 * (1 - ease(S.t / 0.45)); // rise out of the seat
-      if (S.t > 0.75) next("close");
+      // swing the legs out and stand up beside the car
+      blendTo(ease(S.t / 1.0));
+      if (S.t > 1.05) {
+        blendTo(1);
+        walker.teleport(outside, faceOut);
+        next("close");
+      }
     } else if (S.phase === "close") {
       walker.auto(dt, faceOut, "idle");
-      setDoor(m, 1 - ease(S.t / 0.35));
-      if (S.t > 0.38) { setDoor(m, 0); seq = null; }
+      if (S.t > 0.15) walker.anim.setLead("R", handle());
+      setDoor(m, 1 - ease((S.t - 0.2) / 0.4));
+      if (S.t > 0.65) { setDoor(m, 0); walker.anim.setLead(null); seq = null; }
     }
     // keep the parked car from sliding while the door is open
     if (S.car) S.car.knocked.vel.set(0, 0, 0);
@@ -680,7 +729,7 @@ function updateCamera(dt, inp) {
     camera.fov += (58 - camera.fov) * Math.min(1, dt * 3);
   }
   camera.updateProjectionMatrix();
-  const ty = (walker && !driven ? walker.model.position.y : p.y) + height;
+  const ty = (walker && !driven && playerModel.parent === scene ? Math.max(walker.model.position.y, 0) : p.y) + height;
   camY = camY == null || Math.abs(camY - ty) > 5 ? ty : camY + (ty - camY) * Math.min(1, dt * 7);
   camTarget.set(p.x, camY, p.z);
   const cp = Math.cos(cam.pitch);
@@ -810,7 +859,7 @@ function buildUI() {
 let lastSig = "";
 
 // small console hook for testing: fruti.setHour(22)
-window.fruti = { setHour: (h) => { hours = h; envHour = -99; }, get state() { return state; }, get world() { return { peds, walker, traffic, physics, camera, cam, seqPhase: seq?.phase }; } };
+window.fruti = { setHour: (h) => { hours = h; envHour = -99; }, get state() { return state; }, get world() { return { peds, walker, traffic, physics, camera, cam, seqPhase: seq?.phase, seqT: seq?.t, seqModel: seq?.model, drivenHeading: driven?.heading }; } };
 
 boot().catch((e) => {
   console.error(e);
