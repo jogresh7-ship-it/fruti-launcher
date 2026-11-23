@@ -41,3 +41,15 @@ Browsers block `fetch()` for pages opened from disk (`file://`), so normal `.swf
 - **Easy Noise** (`fonts/easy-noise.ttf`): all other text, including the sidebar, top bar, cards and game pages.
 
 Both are embedded in `style.css` as base64, so they also work when the page is opened from disk.
+
+## Fruti World (open-world city generator)
+
+`world/` is a 3D open-world game built with three.js. Type a seed and pick the city size, skyline height, density, palms, traffic, pedestrians and time of day; the same seed always makes the same city. Then walk around, take any car (F), drift with the handbrake (Space), and watch the city light up at night. Keyboard + mouse, gamepad and touch controls all work.
+
+It runs straight from disk: everything (three.js, textures, the road pack and the character) is bundled into `world/world.js`. To change the code, edit `world/src/` and rebuild:
+
+```bash
+cd world && npm install && npm run build
+```
+
+Credits are in `world/CREDITS.md`.
