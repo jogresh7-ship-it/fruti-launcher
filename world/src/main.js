@@ -34,7 +34,7 @@ import { buildTextures } from "./textures.js";
 import { makeMaterials } from "./materials.js";
 import { loadRoads } from "./roads.js";
 import { generateCity, ColliderGrid, cityName, ROAD_W } from "./city.js";
-import { Traffic, DrivenCar, makeCarModel, setCarNight, loadRealCars } from "./vehicles.js";
+import { Traffic, DrivenCar, makeCarModel, setCarNight, loadRealCars, setDoor, doorPoints } from "./vehicles.js";
 import { makePerson, Walker, Pedestrians, loadCharacter } from "./people.js";
 import { Input } from "./input.js";
 import { Physics, loadRapier } from "./ragphys/physics.js";
@@ -47,7 +47,7 @@ const isTouch = matchMedia("(pointer: coarse)").matches;
 // ---------------- settings ----------------
 const DEFAULTS = {
   seed: "sunset", size: isTouch ? 8 : 10, height: 1, density: 0.75, palms: 1,
-  traffic: isTouch ? 16 : 36, peds: isTouch ? 20 : 60, time: 17.6, timeSpeed: 1, quality: isTouch ? "low" : "high",
+  traffic: isTouch ? 16 : 36, peds: isTouch ? 20 : 60, time: 17.6, timeSpeed: 1, quality: isTouch ? "low" : "high", sens: 1,
 };
 let params = { ...DEFAULTS };
 try { Object.assign(params, JSON.parse(localStorage.getItem("fruti-world") || "{}")); } catch (e) { /* storage blocked */ }
@@ -202,6 +202,13 @@ let hours = params.time;
 let cam = { yaw: 0.6, pitch: 0.28, dist: 5, far: false };
 let camY = null;
 let shake = 0, lastDistrict = "", districtTimer = 0;
+let seq = null;              // scripted get-in / get-out of a car
+let wastedT = -1;            // > 0 while the WASTED screen is up
+const stats = { walked: 0, driven: 0, top: 0, punches: 0, kos: 0, stolen: 0, wasted: 0, play: 0 };
+const VEHICLE_NAMES = {
+  silverado: ["Chevrolet Silverado 1500 RST", "Pickup"], seal: ["BYD Seal", "Sedan"], urus: ["Lamborghini Urus Performante", "SUV"], f1: ["McLaren F1", "Super"],
+  sedan: ["Coastline Sedan", "Sedan"], sports: ["Vapor GT", "Sports"], suv: ["Palmetto", "SUV"], taxi: ["Sunshine Cab", "Service"], van: ["Breeze Van", "Van"],
+};
 
 async function boot() {
   setLoading("Painting textures…");
@@ -224,6 +231,15 @@ async function boot() {
 }
 
 function setLoading(t) { $("#loading-text").textContent = t; }
+const TIPS = [
+  "Every seed builds a different city. Same seed, same city.",
+  "Press F next to any car to get in — even one stopped at the lights.",
+  "Hold Space while driving to pull the handbrake and drift.",
+  "Crouch with C to sneak. Sprint with Shift.",
+  "The city lights up at night: try a fast time speed in the World tab.",
+  "Open the map with M, or pause with Esc.",
+];
+setInterval(() => { const el = $("#loading-tip"); if (el) el.textContent = TIPS[Math.floor(Math.random() * TIPS.length)]; }, 4000);
 
 function disposeWorld() {
   if (!city) return;
@@ -252,6 +268,8 @@ async function generate() {
   traffic = new Traffic(city, scene, rng, params.traffic);
   peds = new Pedestrians(city, scene, rng, params.peds);
   peds.physics = physics;
+  peds.onDeath = () => { stats.kos++; };
+  seq = null; wastedT = -1; document.body.classList.remove("wasted");
   // player + a car waiting at the curb
   playerModel = makePerson({ body: 0xe8e2d8, joints: 0xff4f8b });
   playerModel.position.copy(city.spawn);
@@ -267,6 +285,8 @@ async function generate() {
   hours = params.time;
   minimap = new Minimap(city, $("#minimap"), $("#bigmap"), cityName(seed));
   $("#city-name").textContent = cityName(seed);
+  $("#pm-city").textContent = cityName(seed);
+  $("#pm-seed").textContent = "Seed · " + params.seed;
   envHour = -99;
   $("#loading").classList.add("hide");
 }
@@ -344,10 +364,12 @@ function loop() {
   if (inp.menu && state !== "menu" && performance.now() > menuBlockUntil) showMenu(state === "play");
   if (state === "play") play(dt, inp);
   else if (state === "menu") attract(dt);
+  else if (state === "paused" && activeTab === "map") minimap.drawBig(focusPos(), driven ? driven.heading : walker.facing, $("#pmap"));
 
   const { night } = updateSky(dt);
   composer.render();
   document.body.classList.toggle("in-menu", state === "menu");
+  document.body.classList.toggle("paused", state === "paused");
   if (state !== "menu") minimap.draw(focusPos(), cam.yaw, driven ? driven.heading : walker.facing, traffic.cars, hours);
   $("#clock").textContent = `${String(Math.floor(hours)).padStart(2, "0")}:${String(Math.floor((hours % 1) * 60)).padStart(2, "0")}`;
 }
@@ -363,11 +385,30 @@ function stepPhysics(dt) {
 
 const focusPos = () => (driven ? driven.pos : walker.pos);
 
-function play(dt, inp) {
+const NO_INPUT = { x: 0, y: 0, sprint: false, jump: false, handbrake: false, enter: false, horn: false, crouch: false, attack: false };
+function play(realDt, inp) {
+  stats.play += realDt;
+  // WASTED: slow motion and a grey screen, then back on your feet at the start
+  if (walker.dead && wastedT < 0) { wastedT = 0; stats.wasted++; document.body.classList.add("wasted"); sound.crash(20); }
+  const dt = wastedT >= 0 ? realDt * 0.35 : realDt;
+  if (wastedT >= 0) {
+    wastedT += realDt;
+    if (wastedT > 6) {
+      wastedT = -1;
+      document.body.classList.remove("wasted");
+      walker.respawn(city.spawn, -Math.PI / 2);
+      help("You were patched up and dropped back at the beach.", 5);
+    }
+  }
+  const busy = !!seq || wastedT >= 0;
+  const ctl = busy ? NO_INPUT : inp;
   // simulation
   let hit = 0;
+  if (seq) updateSeq(dt);
   if (driven) {
-    hit = driven.update(dt, inp, city.grid, limits);
+    hit = driven.update(dt, seq ? { x: 0, y: driven.speed > 0.5 ? -1 : 0, handbrake: false } : ctl, city.grid, limits);
+    stats.driven += Math.abs(driven.speed) * dt;
+    stats.top = Math.max(stats.top, Math.abs(driven.speed) * 3.6);
     // bump traffic
     for (const c of traffic.cars) {
       const p = c.model.position, dx = p.x - driven.pos.x, dz = p.z - driven.pos.z, d2 = dx * dx + dz * dz;
@@ -383,9 +424,15 @@ function play(dt, inp) {
         }
       }
     }
-    if (inp.horn) traffic.cars.forEach((c) => { if (!c.knocked && c.model.position.distanceTo(driven.pos) < 30) c.cruise = Math.min(22, c.cruise + dt * 4); });
+    if (ctl.horn) traffic.cars.forEach((c) => { if (!c.knocked && c.model.position.distanceTo(driven.pos) < 30) c.cruise = Math.min(22, c.cruise + dt * 4); });
+  } else if (seq) {
+    // walker is being moved by the get-in / get-out sequence
   } else {
-    walker.update(dt, inp, cam.yaw, city.grid, limits);
+    // sprint stamina: drains while sprinting, refills otherwise
+    const sprinting = ctl.sprint && Math.hypot(ctl.x, ctl.y) > 0.2;
+    stamina = THREE.MathUtils.clamp(stamina + (sprinting ? -dt * 9 : dt * 14), 0, 100);
+    walker.update(dt, stamina > 2 ? ctl : { ...ctl, sprint: false }, cam.yaw * 1, city.grid, limits);
+    stats.walked += walker.speed * dt;
     // collide with cars; a moving one knocks the player down
     for (const c of traffic.cars) {
       const m = c.model, f = tmp.set(Math.sin(m.rotation.y), 0, Math.cos(m.rotation.y));
@@ -397,8 +444,8 @@ function play(dt, inp) {
           walker.pos.x = cx + (dx / d) * 1.35; walker.pos.z = cz + (dz / d) * 1.35;
           if (carSpeed > 4 && !walker.down) {
             const v = c.knocked ? c.knocked.vel.clone() : f.clone().multiplyScalar(carSpeed);
-            walker.knock(v.multiplyScalar(0.8).add(new THREE.Vector3(dx / d * 2, 3 + carSpeed * 0.2, dz / d * 2)));
-            sound.crash(carSpeed); shake = 0.6;
+            walker.knock(v.multiplyScalar(0.8).add(new THREE.Vector3(dx / d * 2, 3 + carSpeed * 0.2, dz / d * 2)), carSpeed * 5);
+            sound.crash(carSpeed); shake = 0.6; hurtFlash();
           }
         }
       }
@@ -418,7 +465,7 @@ function play(dt, inp) {
   if (hit > 6) { sound.crash(hit); shake = Math.min(1, hit / 25); }
 
   // punching: the fist lands ~0.22 s into the strike, on whoever is in front within reach
-  if (!driven && inp.attack) walker.attack();
+  if (!driven && !busy && ctl.attack) walker.attack();
   if (!driven && walker.punchT > 0 && walker.punchT < 0.4 && !walker.punchHit) {
     walker.punchHit = true;
     const f = new THREE.Vector3(Math.sin(walker.facing), 0, Math.cos(walker.facing));
@@ -430,17 +477,19 @@ function play(dt, inp) {
     }
     if (best) {
       peds.punch(best, best.model.position.clone().sub(walker.pos).setY(0).normalize());
+      stats.punches++;
       sound.crash(5); shake = 0.15;
     }
   }
 
   // enter / exit vehicles
-  const near = walker.down ? null : nearestCar();
-  if (inp.enter) {
+  const near = walker.down || busy ? null : nearestCar();
+  if (ctl.enter) {
     if (driven) exitCar();
     else if (near) enterCar(near);
   }
-  setPrompt(!driven && near ? "enter" : null);
+  if (!driven && near) help(`Press <img src="ui/keyboard_f.png" alt="F"> to get in the ${VEHICLE_NAMES[near.model.userData.type]?.[0] || "car"}.`, 0.3, "car");
+  else if (helpKey === "car") hideHelp();
 
   traffic.update(dt, driven ? null : walker.pos, driven ? driven.pos : null, peds.positions());
   peds.update(dt, driven ? driven.pos : null, driven ? driven.vel : null, () => { sound.crash(8); }, camera.position, driven ? null : walker.pos);
@@ -448,6 +497,13 @@ function play(dt, inp) {
 
   if (inp.camera) cam.far = !cam.far;
   if (inp.map) $("#bigmap-wrap").classList.toggle("show");
+  // health / stamina bars, damage vignette
+  $("#hp i").style.width = walker.health + "%";
+  $("#hp").classList.toggle("low", walker.health < 30);
+  $("#st i").style.width = stamina + "%";
+  flashA = Math.max(0, flashA - realDt * 1.5);
+  $("#flash").style.opacity = Math.max(flashA, walker.health < 30 ? 0.35 + Math.sin(stats.play * 5) * 0.1 : 0);
+  tickHelp(realDt);
   updateCamera(dt, inp);
 
   // HUD
@@ -457,12 +513,19 @@ function play(dt, inp) {
   $("#hud").classList.toggle("driving", !!driven);
   const p = focusPos();
   const dName = districtAt(p);
-  if (dName !== lastDistrict) { lastDistrict = dName; $("#district").textContent = dName; $("#district").classList.remove("show"); void $("#district").offsetWidth; $("#district").classList.add("show"); }
-  sound.update({ driving: !!driven, speed: driven ? driven.speed : 0, throttle: inp.y, horn: inp.horn && !!driven, beach: THREE.MathUtils.clamp(1 - (city.shoreX(p.z) - p.x) / 120, 0, 1), t: mats.time.value });
+  if (dName !== lastDistrict) {
+    lastDistrict = dName;
+    $("#district").textContent = dName;
+    $("#area-sub").textContent = city ? $("#city-name").textContent : "";
+    $("#area").classList.add("show");
+    clearTimeout(areaTO); areaTO = setTimeout(() => $("#area").classList.remove("show"), 5000);
+  }
+  sound.update({ driving: !!driven, speed: driven ? driven.speed : 0, throttle: ctl.y, horn: inp.horn && !!driven, beach: THREE.MathUtils.clamp(1 - (city.shoreX(p.z) - p.x) / 120, 0, 1), t: mats.time.value });
 }
 
 function districtAt(p) {
   if (p.x > city.landX1) return "Beach";
+  if (p.x > city.half - ROAD_W / 2) return "Ocean Boulevard";
   for (const b of city.blocks) if (p.x > b.x0 - ROAD_W / 2 && p.x < b.x1 + ROAD_W / 2 && p.z > b.z0 - ROAD_W / 2 && p.z < b.z1 + ROAD_W / 2) {
     return { downtown: "Downtown", midtown: "Midtown", residential: "Palm Heights", beach: "Ocean Boulevard", park: "City Park" }[b.kind];
   }
@@ -478,32 +541,123 @@ function nearestCar() {
   return best;
 }
 
+// ---------- getting in and out of cars (walk to the door, open it, duck in, close it) ----------
+const ease = (u) => (u < 0 ? 0 : u > 1 ? 1 : u * u * (3 - 2 * u));
 function enterCar(c) {
-  traffic.remove(c);
-  driven = new DrivenCar(c.model);
-  driven.heading = c.model.rotation.y;
-  if (c.speed && !c.knocked) driven.vel.set(Math.sin(driven.heading), 0, Math.cos(driven.heading)).multiplyScalar(c.speed * 0.3);
-  c.model.add(headlight, headlight.target);
-  playerModel.visible = false;
-  cam.yaw = driven.heading + Math.PI;
+  traffic.remove(c);            // the car stops where it is (its driver hits the brakes)
+  seq = { type: "enter", model: c.model, phase: "walk", t: 0 };
+  stats.stolen++;
 }
 
 function exitCar() {
-  const m = driven.model;
-  const left = new THREE.Vector3(Math.cos(driven.heading), 0, -Math.sin(driven.heading));
-  playerModel.visible = true;
-  walker.teleport(driven.pos.clone().addScaledVector(left, 1.9), driven.heading);
-  m.remove(headlight, headlight.target);
-  // hand the car back to the traffic system as a parked (knocked) car
-  const car = { model: m, a: 0, b: 0, t: 0, speed: 0, cruise: 12, turn: null, knocked: null };
-  traffic.cars.push(car);
-  traffic.knock(car, driven.vel);
-  car.knocked.spin = 0;
-  driven = null;
+  if (!driven) return;
+  seq = { type: "exit", model: driven.model, phase: "stop", t: 0 };
+}
+
+function updateSeq(dt) {
+  const S = seq, m = S.model;
+  S.t += dt;
+  const h = m.rotation.y;
+  const { outside, seat } = doorPoints(m);
+  const faceIn = Math.atan2(-Math.cos(h), Math.sin(h)), faceOut = Math.atan2(Math.cos(h), -Math.sin(h));
+  const next = (phase) => { S.phase = phase; S.t = 0; };
+  if (S.type === "enter") {
+    if (S.phase === "walk") {
+      const dx = outside.x - walker.pos.x, dz = outside.z - walker.pos.z, d = Math.hypot(dx, dz);
+      if (d < 0.3 || S.t > 3) { walker.pos.x = outside.x; walker.pos.z = outside.z; next("open"); }
+      else walker.auto(dt, Math.atan2(dx, dz), d > 3 ? "run" : "walk", city.grid, limits);
+    } else if (S.phase === "open") {
+      walker.auto(dt, faceIn, "idle");
+      walker.pos.x += (outside.x - walker.pos.x) * Math.min(1, dt * 8); walker.pos.z += (outside.z - walker.pos.z) * Math.min(1, dt * 8);
+      setDoor(m, ease(S.t / 0.55));
+      if (S.t > 0.6) next("in");
+    } else if (S.phase === "in") {
+      const u = ease(S.t / 0.8);
+      walker.auto(dt, h, "crouch");
+      walker.pos.x = outside.x + (seat.x - outside.x) * u;
+      walker.pos.z = outside.z + (seat.z - outside.z) * u;
+      walker.pos.y = 0.04 - 0.75 * ease((S.t - 0.25) / 0.6); // sink down into the seat
+      if (u > 0.8) playerModel.visible = false;
+      if (S.t > 0.85) next("close");
+    } else if (S.phase === "close") {
+      setDoor(m, 1 - ease(S.t / 0.35));
+      if (S.t > 0.38) {
+        setDoor(m, 0);
+        driven = new DrivenCar(m);
+        driven.heading = h;
+        m.add(headlight, headlight.target);
+        seq = null;
+        showVehicle(m.userData.type);
+      }
+    }
+  } else {
+    if (S.phase === "stop") {
+      // brake to a stop first (the driving code brakes while a sequence runs)
+      if (Math.abs(driven.speed) < 0.6 || S.t > 2.5) next("open");
+    } else if (S.phase === "open") {
+      setDoor(m, ease(S.t / 0.45));
+      if (S.t > 0.5) {
+        // hand the car back to the traffic system as a parked car, and step out of it
+        m.remove(headlight, headlight.target);
+        const car = { model: m, a: 0, b: 0, t: 0, speed: 0, cruise: 12, turn: null, knocked: null };
+        traffic.cars.push(car);
+        traffic.knock(car, new THREE.Vector3());
+        car.knocked.spin = 0;
+        S.car = car;
+        driven = null;
+        walker.teleport(seat, faceOut);
+        playerModel.visible = true;
+        next("out");
+      }
+    } else if (S.phase === "out") {
+      const u = ease(S.t / 0.7);
+      walker.auto(dt, faceOut, "idle");
+      walker.pos.x = seat.x + (outside.x - seat.x) * u;
+      walker.pos.z = seat.z + (outside.z - seat.z) * u;
+      walker.pos.y = 0.04 - 0.75 * (1 - ease(S.t / 0.45)); // rise out of the seat
+      if (S.t > 0.75) next("close");
+    } else if (S.phase === "close") {
+      walker.auto(dt, faceOut, "idle");
+      setDoor(m, 1 - ease(S.t / 0.35));
+      if (S.t > 0.38) { setDoor(m, 0); seq = null; }
+    }
+    // keep the parked car from sliding while the door is open
+    if (S.car) S.car.knocked.vel.set(0, 0, 0);
+  }
+}
+
+// ---------- HUD helpers ----------
+let helpKey = null, helpT = 0, areaTO = 0, vehTO = 0, flashA = 0, stamina = 100, activeTab = "map";
+function help(html, seconds = 5, key = html) {
+  const el = $("#help");
+  if (helpKey !== key) { el.innerHTML = html; helpKey = key; }
+  helpT = seconds;
+  el.classList.add("show");
+}
+function hideHelp() { helpKey = null; helpT = 0; $("#help").classList.remove("show"); }
+function tickHelp(dt) { if (helpT > 0 && (helpT -= dt) <= 0) hideHelp(); }
+function hurtFlash() { flashA = 0.9; }
+function showVehicle(type) {
+  const [name, cls] = VEHICLE_NAMES[type] || ["Car", ""];
+  $("#vehicle-name").textContent = name;
+  $("#vehicle-class").textContent = cls;
+  $("#vehicle").classList.add("show");
+  clearTimeout(vehTO); vehTO = setTimeout(() => $("#vehicle").classList.remove("show"), 4000);
+}
+// first-time tips, one after another
+const TUTORIAL = [
+  [`Use <img src="ui/keyboard_w.png" alt="W"><img src="ui/keyboard_a.png" alt="A"><img src="ui/keyboard_s.png" alt="S"><img src="ui/keyboard_d.png" alt="D"> to move and the mouse to look around. Hold <img src="ui/keyboard_shift.png" alt="Shift"> to sprint.`, 7],
+  [`The McLaren at the curb is yours. Walk up to it and press <img src="ui/keyboard_f.png" alt="F">.`, 7],
+  [`Press <img src="ui/keyboard_escape.png" alt="Esc"> to pause, see the map and generate a new city.`, 6],
+];
+function runTutorial() {
+  let i = 0;
+  const step = () => { if (i < TUTORIAL.length && state === "play") { if (helpKey !== "car") help(TUTORIAL[i][0], TUTORIAL[i][1]); setTimeout(step, (TUTORIAL[i++][1] + 1) * 1000); } };
+  setTimeout(step, 800);
 }
 
 function updateCamera(dt, inp) {
-  const sens = isTouch ? 0.0045 : 0.0026;
+  const sens = (isTouch ? 0.0045 : 0.0026) * (params.sens || 1);
   cam.yaw -= inp.look.x * sens;
   cam.pitch = THREE.MathUtils.clamp(cam.pitch + inp.look.y * sens * 0.8, -0.15, 1.25);
   cam.dist = THREE.MathUtils.clamp(cam.dist + inp.zoom * 0.8, 3, 18);
@@ -540,7 +694,9 @@ function updateCamera(dt, inp) {
   camPos.copy(camTarget).addScaledVector(dir, d);
   camPos.y = Math.max(camPos.y, 0.5);
   if (shake > 0) { camPos.x += (Math.random() - 0.5) * shake; camPos.y += (Math.random() - 0.5) * shake; shake = Math.max(0, shake - dt * 2.5); }
-  camera.position.copy(camPos);
+  // smooth follow (snaps on teleports)
+  if (camera.position.distanceTo(camPos) > 25) camera.position.copy(camPos);
+  else camera.position.lerp(camPos, 1 - Math.exp(-dt * 16));
   camera.lookAt(camTarget);
 }
 
@@ -558,21 +714,43 @@ function attract(dt) {
 }
 
 // ---------------- UI ----------------
-function setPrompt(kind) {
-  const el = $("#prompt");
-  el.classList.toggle("show", !!kind);
+function setTab(name) {
+  activeTab = name;
+  for (const b of document.querySelectorAll("#tabs button")) b.classList.toggle("on", b.dataset.tab === name);
+  for (const p of document.querySelectorAll(".tab-panel")) p.classList.toggle("on", p.dataset.tab === name);
+  if (name === "stats") renderStats();
+}
+const TAB_ORDER = ["map", "world", "stats", "settings", "controls", "credits"];
+
+function renderStats() {
+  const mins = Math.floor(stats.play / 60), secs = Math.floor(stats.play % 60);
+  const km = (m) => (m / 1000).toFixed(2) + " km";
+  const items = [
+    [`${mins}:${String(secs).padStart(2, "0")}`, "Time played"], [km(stats.walked), "On foot"], [km(stats.driven), "Driven"],
+    [Math.round(stats.top) + " km/h", "Top speed"], [stats.stolen, "Cars taken"], [stats.punches, "Punches landed"],
+    [stats.kos, "People down"], [stats.wasted, "Times wasted"],
+  ];
+  $("#stats").innerHTML = items.map(([v, k]) => `<div class="stat"><b>${v}</b><span>${k}</span></div>`).join("");
 }
 
 function showMenu(on) {
   if (on) {
+    const wasPlaying = state === "play";
     state = state === "menu" ? "menu" : "paused";
     $("#menu").classList.add("show");
     $("#menu").classList.toggle("paused", state === "paused");
+    setTab(state === "paused" ? "map" : "world");
+    const hh = Math.floor(hours), mm = Math.floor((hours % 1) * 60);
+    $("#pm-time").textContent = `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")} · ${lastDistrict || "Ocean Boulevard"}`;
+    $("#pm-sub").textContent = state === "paused" ? "Paused" : "Open-world city generator";
     if (document.pointerLockElement) document.exitPointerLock();
+    if (wasPlaying) sound.setPaused?.(true);
   } else {
     $("#menu").classList.remove("show");
+    const first = state === "menu";
     state = "play";
     sound.start();
+    if (first) runTutorial();
     if (!isTouch) canvas.requestPointerLock?.();
   }
 }
@@ -582,9 +760,16 @@ document.addEventListener("pointerlockchange", () => {
 });
 
 function buildUI() {
-  const f = $("#gen");
+  const f = $("#menu");
+  for (const b of document.querySelectorAll("#tabs button")) b.addEventListener("click", () => setTab(b.dataset.tab));
+  addEventListener("keydown", (e) => {
+    if (state !== "paused" || e.target.tagName === "INPUT") return;
+    const i = TAB_ORDER.indexOf(activeTab);
+    if (e.code === "KeyE" || e.code === "ArrowRight") setTab(TAB_ORDER[(i + 1) % TAB_ORDER.length]);
+    if (e.code === "KeyQ" || e.code === "ArrowLeft") setTab(TAB_ORDER[(i + TAB_ORDER.length - 1) % TAB_ORDER.length]);
+  });
   const set = (name, v) => { const el = f.elements[name]; if (el) el.value = v; const o = $(`#v-${name}`); if (o) o.textContent = fmt(name, v); };
-  const fmt = (n, v) => n === "time" ? `${String(Math.floor(v)).padStart(2, "0")}:${String(Math.round((v % 1) * 60)).padStart(2, "0")}` : n === "height" || n === "palms" ? `${(+v).toFixed(1)}×` : n === "density" ? `${Math.round(v * 100)}%` : n === "timeSpeed" ? (+v === 0 ? "Frozen" : `${v}×`) : n === "size" ? `${v}×${v} blocks` : v;
+  const fmt = (n, v) => n === "sens" ? `${(+v).toFixed(1)}×` : n === "time" ? `${String(Math.floor(v)).padStart(2, "0")}:${String(Math.round((v % 1) * 60)).padStart(2, "0")}` : n === "height" || n === "palms" ? `${(+v).toFixed(1)}×` : n === "density" ? `${Math.round(v * 100)}%` : n === "timeSpeed" ? (+v === 0 ? "Frozen" : `${v}×`) : n === "size" ? `${v}×${v} blocks` : v;
   for (const [k, v] of Object.entries(params)) set(k, v);
   f.addEventListener("input", (e) => {
     const el = e.target;
@@ -604,13 +789,13 @@ function buildUI() {
     $("#seed-name").textContent = cityName(hashSeed(params.seed));
     save();
   });
-  $("#btn-generate").addEventListener("click", async () => { save(); await generate(); state = "menu"; $("#menu").classList.remove("paused"); });
+  $("#btn-generate").addEventListener("click", async () => { save(); await generate(); state = "menu"; showMenu(true); lastSig = JSON.stringify({ ...params, time: 0, timeSpeed: 0, quality: 0, sens: 0 }); });
   $("#btn-play").addEventListener("click", async () => {
     save();
     if (state === "menu") {
       // fresh world each time the generator settings changed
-      const sig = JSON.stringify({ ...params, time: 0, timeSpeed: 0, quality: 0 });
-      if (sig !== lastSig) await generate();
+      const sig = JSON.stringify({ ...params, time: 0, timeSpeed: 0, quality: 0, sens: 0 });
+      if (sig !== lastSig) { await generate(); state = "menu"; }
       lastSig = sig;
       cam.yaw = Math.PI / 2 + 0.4; cam.pitch = 0.25;
     }
@@ -620,12 +805,12 @@ function buildUI() {
   $("#btn-mute").addEventListener("click", () => { sound.setMuted(!sound.muted); $("#btn-mute").textContent = sound.muted ? "Sound: off" : "Sound: on"; });
   $("#bigmap-wrap").addEventListener("click", () => $("#bigmap-wrap").classList.remove("show"));
   f.addEventListener("submit", (e) => e.preventDefault());
-  lastSig = JSON.stringify({ ...params, time: 0, timeSpeed: 0, quality: 0 });
+  lastSig = JSON.stringify({ ...params, time: 0, timeSpeed: 0, quality: 0, sens: 0 });
 }
 let lastSig = "";
 
 // small console hook for testing: fruti.setHour(22)
-window.fruti = { setHour: (h) => { hours = h; envHour = -99; }, get state() { return state; }, get world() { return { peds, walker, traffic, physics, camera, cam }; } };
+window.fruti = { setHour: (h) => { hours = h; envHour = -99; }, get state() { return state; }, get world() { return { peds, walker, traffic, physics, camera, cam, seqPhase: seq?.phase }; } };
 
 boot().catch((e) => {
   console.error(e);

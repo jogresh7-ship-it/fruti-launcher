@@ -93,6 +93,41 @@ function startRagdoll(physics, person, vel, tone, hit) {
   if (hit) rd.impulse(hit.part, hit.J, hit.point);
   return rd;
 }
+// Muscle tone over time after a hit: from `from` (still fighting it, knees buckling) down to
+// `to` (unconscious or dead) over `dur` seconds — a body crumples instead of dropping like a board.
+function rampTone(rd, t, from, to, dur) {
+  const u = THREE.MathUtils.smoothstep(t, 0, dur);
+  const k = from + (to - from) * u;
+  for (const p of rd.parts) p.k = /neck|head/.test(p.kind) ? k * 0.6 : k;
+}
+
+// Blood pool decal: an irregular dark-red stain that spreads slowly under a body.
+let bloodTex = null;
+function makeBloodTex() {
+  const c = document.createElement("canvas");
+  c.width = c.height = 256;
+  const x = c.getContext("2d");
+  for (let i = 0; i < 9; i++) {
+    const a = Math.random() * 6.28, d = i ? 30 + Math.random() * 45 : 0, r = i ? 30 + Math.random() * 40 : 75;
+    const cx = 128 + Math.cos(a) * d, cy = 128 + Math.sin(a) * d;
+    const g = x.createRadialGradient(cx, cy, 0, cx, cy, r);
+    g.addColorStop(0, "rgba(70,0,4,0.95)"); g.addColorStop(0.7, "rgba(90,4,8,0.85)"); g.addColorStop(1, "rgba(90,4,8,0)");
+    x.fillStyle = g; x.beginPath(); x.arc(cx, cy, r, 0, 7); x.fill();
+  }
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+const bloodGeo = new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2);
+export function makeBloodPool() {
+  bloodTex ||= makeBloodTex();
+  const m = new THREE.Mesh(bloodGeo, new THREE.MeshStandardMaterial({ map: bloodTex, transparent: true, depthWrite: false, roughness: 0.15, metalness: 0.1, polygonOffset: true, polygonOffsetFactor: -2 }));
+  m.rotation.y = Math.random() * 6.28;
+  m.scale.setScalar(0.01);
+  m.renderOrder = 1;
+  return m;
+}
+
 // Keep the character's root under its pelvis (so the camera, minimap and AI follow the body),
 // then pose the bones from the physics bodies.
 function followRagdoll(person, rd) {
@@ -113,6 +148,8 @@ export class Walker {
     this.crouch = false;
     this.punchT = 0;
     this.physics = null;
+    this.health = 100;
+    this.hurtT = 99;
     this.teleport(model.position, 0);
   }
   get anim() { return this.model.userData.anim; }
@@ -132,18 +169,40 @@ export class Walker {
     this.anim.strike();
     return true;
   }
-  // Hit by a car: a real ragdoll fall, then get back up where the body landed.
-  knock(vel) {
-    if (this.fall) return;
-    if (!this.physics) return;
-    this.fall = { t: 0, heading: this.facing, rd: startRagdoll(this.physics, this.model, vel, 2.2, { part: "chest", J: _v.copy(vel).setY(0).multiplyScalar(4) }) };
+  get dead() { return this.health <= 0; }
+  // Hit by a car: a real ragdoll fall, then get back up where the body landed (unless it killed you).
+  knock(vel, damage = 0) {
+    if (this.fall || !this.physics) return;
+    this.health = Math.max(0, this.health - damage);
+    this.hurtT = 0;
+    this.fall = { t: 0, heading: this.facing, rd: startRagdoll(this.physics, this.model, vel, 6, { part: "chest", J: _v.copy(vel).setY(0).multiplyScalar(4) }) };
+  }
+  // Back on your feet somewhere (respawn after being wasted).
+  respawn(p, heading) {
+    this.fall?.rd.dispose();
+    this.fall = null;
+    this.model.rotation.set(0, 0, 0);
+    this.health = 100;
+    this.teleport(p, heading);
   }
   afterPhysics() { if (this.fall) followRagdoll(this.model, this.fall.rd); }
+  // Scripted movement (walking to a car door, ducking into the seat): steer toward a heading
+  // with a mode, or stand and turn to face `face`.
+  auto(dt, wantHeading, mode, grid, bounds) {
+    steer(this.model, wantHeading, mode);
+    this.anim.update(dt);
+    this.speed = this.anim.speed.x;
+    if (grid) grid.resolveCircle(this.pos, 0.38, 0.5);
+    if (bounds) clampXZ(this.pos, bounds);
+  }
   update(dt, input, camYaw, grid, bounds) {
+    this.hurtT += dt;
+    if (this.hurtT > 6 && this.health > 0) this.health = Math.min(100, this.health + dt * 4); // slow regen
     if (this.fall) {
       const f = this.fall;
       f.t += dt;
-      if (f.t > 3.2 && f.rd.motion() < 0.6) {
+      rampTone(f.rd, f.t, 6, this.dead ? 0.25 : 1.6, this.dead ? 1.4 : 0.8);
+      if (!this.dead && f.t > 3.2 && f.rd.motion() < 0.6) {
         const t = f.rd.byName.pelvis.rb.translation(), h = f.rd.byName.head.rb.translation();
         f.rd.dispose();
         this.fall = null;
@@ -239,13 +298,15 @@ export class Pedestrians {
     }
   }
   // Ragdoll death. vel: body velocity (m/s); hit: optional {part, J (impulse vector), point}.
-  kill(p, vel, hit) {
+  // tone0: how much fight is left at first (a punch knockout crumples, a car hit flails).
+  kill(p, vel, hit, tone0 = 5) {
     if (p.dead) return;
     p.health = 0;
     p.flee = null;
-    if (this.physics) p.dead = { t: 0, rd: startRagdoll(this.physics, p.model, vel, 0.35, hit) };
+    if (this.physics) p.dead = { t: 0, tone0, rd: startRagdoll(this.physics, p.model, vel, tone0, hit) };
     else p.dead = { t: 0, rd: null };
     this.panic(p.model.position);
+    this.onDeath?.(p);
   }
   // A punch from the player. dir: unit vector from player to the pedestrian.
   punch(p, dir, damage = 34) {
@@ -286,10 +347,23 @@ export class Pedestrians {
     for (const p of this.list) {
       const pos = p.model.position;
       if (p.dead) {
-        p.dead.t += dt;
+        const D = p.dead;
+        D.t += dt;
+        if (D.rd) {
+          rampTone(D.rd, D.t, D.tone0, 0.25, 1.3);
+          // once the body has come to rest, a pool of blood spreads under it
+          if (!D.blood && D.t > 1.2 && D.rd.motion() < 0.5) {
+            const t = D.rd.byName.chest.rb.translation();
+            D.blood = makeBloodPool();
+            D.blood.position.set(t.x, 0.06, t.z);
+            this.scene.add(D.blood);
+          }
+          if (D.blood) D.blood.scale.setScalar(Math.min(1.9, 0.3 + (D.t - 1.2) * 0.22));
+        }
         // bodies stay a while, then quietly get replaced once nobody is looking closely
         if (p.dead.t > 25 && (!camPos || pos.distanceTo(camPos) > 45) || p.dead.t > 90) {
           p.dead.rd?.dispose();
+          if (p.dead.blood) { this.scene.remove(p.dead.blood); p.dead.blood.material.dispose(); }
           p.dead = null; p.health = 100;
           p.b = this.rng.pick(this.city.blocks);
           this.spawnOnLoop(p);
@@ -327,7 +401,7 @@ export class Pedestrians {
         const dx = pos.x - car.x, dz = pos.z - car.z;
         const sp = carVel.length();
         if (dx * dx + dz * dz < 4.2 && sp > 4) {
-          this.kill(p, _v.copy(carVel).multiplyScalar(0.75).setY(2 + sp * 0.12), { part: "pelvis", J: carVel.clone().multiplyScalar(6), point: null });
+          this.kill(p, _v.copy(carVel).multiplyScalar(0.75).setY(2 + sp * 0.12), { part: "pelvis", J: carVel.clone().multiplyScalar(6), point: null }, 2.5);
           onHit && onHit(p);
         }
       }
@@ -335,7 +409,7 @@ export class Pedestrians {
   }
   positions() { return this.list.filter((p) => !p.dead).map((p) => p.model.position); }
   dispose() {
-    for (const p of this.list) { p.dead?.rd?.dispose(); this.scene.remove(p.model); }
+    for (const p of this.list) { p.dead?.rd?.dispose(); if (p.dead?.blood) this.scene.remove(p.dead.blood); this.scene.remove(p.model); }
     this.list = [];
   }
 }

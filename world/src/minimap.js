@@ -65,8 +65,8 @@ export class Minimap {
     if (this.big.offsetParent) this.drawBig(pos, heading);
   }
 
-  drawBig(pos, heading) {
-    const c = this.big, x = c.getContext("2d");
+  drawBig(pos, heading, canvas = this.big) {
+    const c = canvas, x = c.getContext("2d");
     const dpr = Math.min(2, devicePixelRatio || 1);
     const W = c.clientWidth, H = c.clientHeight;
     if (c.width !== W * dpr) { c.width = W * dpr; c.height = H * dpr; }

@@ -129,8 +129,52 @@ export async function loadRealCars() {
         into.add(mesh);
       }
     };
+    // Driver's door (car's left = +x): cut the panel's triangles out of the body so it can swing
+    // open on a hinge at its front edge. Works for any model; interior trim inside it goes along.
+    const H = size.y * k;
+    const fw = wheels.find((w) => w.key === "RF");
+    const doorFront = fw ? fw.center.z - fw.radius - 0.08 : r.len * 0.2;
+    const doorLen = THREE.MathUtils.clamp(r.len * 0.23, 0.95, 1.2);
+    const xCut = W / 2 - 0.42;
+    const doorParts = [], keep = [];
+    let hingeX = W / 2;
+    for (const p of body) {
+      const g = p.g.index ? p.g.toNonIndexed() : p.g;
+      const P = g.attributes.position.array, Nn = g.attributes.normal.array, U = g.attributes.uv.array;
+      const a = { p: [], n: [], u: [] }, b = { p: [], n: [], u: [] };
+      for (let t = 0; t < P.length / 9; t++) {
+        const i = t * 9;
+        const cx = (P[i] + P[i + 3] + P[i + 6]) / 3, cy = (P[i + 1] + P[i + 4] + P[i + 7]) / 3, cz = (P[i + 2] + P[i + 5] + P[i + 8]) / 3;
+        const minX = Math.min(P[i], P[i + 3], P[i + 6]);
+        const inDoor = cx > xCut && minX > W / 2 - 0.75 && cz < doorFront && cz > doorFront - doorLen && cy > 0.3 && cy < H * 0.95;
+        const o = inDoor ? a : b;
+        for (let v = 0; v < 3; v++) {
+          const j = t * 3 + v;
+          o.p.push(P[j * 3], P[j * 3 + 1], P[j * 3 + 2]); o.n.push(Nn[j * 3], Nn[j * 3 + 1], Nn[j * 3 + 2]); o.u.push(U[j * 2], U[j * 2 + 1]);
+          if (inDoor) hingeX = Math.max(hingeX, P[j * 3]);
+        }
+      }
+      const mk = (o) => {
+        const ng = new THREE.BufferGeometry();
+        ng.setAttribute("position", new THREE.Float32BufferAttribute(o.p, 3));
+        ng.setAttribute("normal", new THREE.Float32BufferAttribute(o.n, 3));
+        ng.setAttribute("uv", new THREE.Float32BufferAttribute(o.u, 2));
+        ng.setIndex([...Array(o.p.length / 3).keys()]);
+        return { g: ng, m: p.m };
+      };
+      if (a.p.length) doorParts.push(mk(a));
+      if (b.p.length) keep.push(mk(b));
+    }
     const root = new THREE.Group();
-    mergeByMaterial(body, root);
+    mergeByMaterial(keep, root);
+    if (doorParts.length) {
+      const door = new THREE.Group();
+      door.name = "door";
+      door.position.set(hingeX, 0, doorFront);
+      mergeByMaterial(doorParts, door, door.position);
+      root.add(door);
+    }
+    root.userData.doorInfo = { front: doorFront, len: doorLen, side: W / 2, height: H };
     // wheel pivots: named so clones can find them (front pair first, as the procedural cars)
     let wr = 0.36;
     for (const w of wheels) {
@@ -196,9 +240,13 @@ function carGeometry(typeName) {
   }
   if (t.sign) chrome.push(new THREE.BoxGeometry(0.7, 0.22, 0.25).translate(0, t.clr + t.h + ch + 0.08, cz));
   const m = (arr) => (arr.length ? mergeGeometries(arr.map(nonIdx)) : null);
+  // door pieces, in hinge space (hinge at the door's front edge on the outer side)
+  const dl = 1.05;
+  const doorPanel = new RoundedBoxGeometry(0.07, t.h * 0.86, dl, 2, 0.03).translate(0.0, t.clr + t.h / 2, -dl / 2);
+  const doorGlass = new THREE.BoxGeometry(0.04, t.cab[1] * 0.78, dl * 0.88).translate(-(t.w - t.cab[0]) / 2 - 0.02, t.clr + t.h + t.cab[1] * 0.45, -dl / 2 - 0.04);
   const wheel = new THREE.CylinderGeometry(t.wr, t.wr, 0.26, 16).rotateZ(Math.PI / 2);
   const rim = new THREE.CylinderGeometry(t.wr * 0.62, t.wr * 0.62, 0.28, 10).rotateZ(Math.PI / 2);
-  return (geoCache[typeName] = { body: m(body), glass: m(glass), dark: m(dark), chrome: m(chrome), head: m(head), tail: m(tail), wheel, rim });
+  return (geoCache[typeName] = { body: m(body), glass: m(glass), dark: m(dark), chrome: m(chrome), head: m(head), tail: m(tail), wheel, rim, doorPanel, doorGlass });
 }
 
 export function makeCarModel(typeName, color) {
@@ -208,7 +256,8 @@ export function makeCarModel(typeName, color) {
     const body = realTemplates[typeName].clone();
     root.add(body);
     const wheels = ["LF", "RF", "LB", "RB"].map((k) => body.getObjectByName("wheel_" + k)).filter(Boolean);
-    root.userData = { type: typeName, spec: t, wheels, wheelBase: realTemplates[typeName].userData.wheelBase };
+    const tu = realTemplates[typeName].userData;
+    root.userData = { type: typeName, spec: t, wheels, wheelBase: tu.wheelBase, door: body.getObjectByName("door"), doorInfo: tu.doorInfo };
     return root;
   }
   const g = carGeometry(typeName), M = sharedMats();
@@ -231,7 +280,16 @@ export function makeCarModel(typeName, color) {
     root.add(w);
     wheels.push(w);
   }
-  root.userData = { type: typeName, spec: t, wheels, wheelBase: wb * 2 };
+  // driver's door: a paint panel + window on a hinge (the car's left side is +x)
+  const doorFront = wb - t.wr - 0.12, doorLen = 1.05;
+  const door = new THREE.Group();
+  door.position.set(t.w / 2, 0, doorFront);
+  const panel = new THREE.Mesh(g.doorPanel, paintMat(t.color || color));
+  const win = new THREE.Mesh(g.doorGlass, M.glass);
+  panel.castShadow = true;
+  door.add(panel, win);
+  root.add(door);
+  root.userData = { type: typeName, spec: t, wheels, wheelBase: wb * 2, door, doorInfo: { front: doorFront, len: doorLen, side: t.w / 2, height: t.clr + t.h + t.cab[1] } };
   return root;
 }
 
@@ -484,4 +542,18 @@ export function setCarNight(n) {
   const m = sharedMats();
   m.head.emissiveIntensity = 0.3 + n * 6;
   m.tail.emissiveIntensity = 0.5 + n * 3;
+}
+
+// Door angle 0 (shut) .. 1 (open about 65°).
+export function setDoor(model, a) {
+  const d = model.userData.door;
+  if (d) d.rotation.y = -a * 1.15;
+}
+// Where a person stands to open the driver's door, and where they sit (world space).
+export function doorPoints(model) {
+  const i = model.userData.doorInfo;
+  model.updateMatrixWorld(true);
+  const outside = new THREE.Vector3(i.side + 0.75, 0, i.front - i.len * 0.75).applyMatrix4(model.matrixWorld);
+  const seat = new THREE.Vector3(i.side - 0.55, 0, i.front - i.len * 0.6).applyMatrix4(model.matrixWorld);
+  return { outside, seat };
 }
