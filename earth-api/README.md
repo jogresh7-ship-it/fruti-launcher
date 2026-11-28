@@ -18,6 +18,15 @@ The home page is a live 3D map of the whole planet:
 
 Map data: [OpenFreeMap](https://openfreemap.org) and © OpenStreetMap contributors, Esri World Imagery, OpenTopoMap and Mapzen terrain tiles. Drawn with [MapLibre GL JS](https://maplibre.org) 5.24.0.
 
+## Earth Flight (the game)
+
+`fly.html`, or the **✈️ Fly a plane** button, is a flight game over the real world: https://earth-api.pages.dev/fly.html
+
+- Take off over New York, Paris, Dubai, Tokyo, San Francisco, London, Rio, the Swiss Alps or the Grand Canyon. You can also search any town or landmark, or click **Fly from here** on the main map.
+- Fly through real 3D buildings and roads (Streets), or over real satellite photos with 3D buildings (Satellite). The mountains are real terrain, shaded so they look 3D.
+- If you hit a building, a mountain or the water, you crash. **Checkpoint race** mode sets 8 glowing beacons to fly through, and your best time for each city is saved.
+- Controls: arrows or WASD to steer, Shift to boost, Space to slow down, C to change the camera, Esc to pause. A touch stick and buttons appear on phones, and gamepads work too.
+
 ## Endpoints
 
 | Endpoint | What it gives you | Data |

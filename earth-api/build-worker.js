@@ -9,6 +9,8 @@ const files = {
   "/": ["text/html; charset=utf-8", read("./public/index.html")],
   "/earth-browser.js": ["text/javascript; charset=utf-8", read("./public/earth-browser.js")],
   "/app.js": ["text/javascript; charset=utf-8", read("./public/app.js")],
+  "/fly.html": ["text/html; charset=utf-8", read("./public/fly.html")],
+  "/fly.js": ["text/javascript; charset=utf-8", read("./public/fly.js")],
 };
 const worker = `${core}
 const FILES = ${JSON.stringify(files)};

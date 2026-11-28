@@ -1,0 +1,232 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Earth Flight</title>
+<meta name="description" content="Fly a plane over the real world: 3D buildings, roads, satellite photos and mountains.">
+<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.css">
+<style>
+  :root {
+    --hud: rgba(10, 22, 34, .58); --hud-ink: #f2f7fb; --hud-muted: #a9bccc; --accent: #3ccf8e;
+    --warn: #ffb020; --bad: #ff5a5f; --panel: rgba(12, 24, 36, .86); --line: rgba(255,255,255,.14);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #8fc1ef; color: var(--hud-ink);
+    font: 15px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; touch-action: none; user-select: none; -webkit-user-select: none; }
+  #map { position: fixed; inset: 0; }
+  .maplibregl-ctrl-bottom-right { bottom: 0; right: 0; }
+  button { font: inherit; color: inherit; cursor: pointer; }
+
+  /* ---------- plane ---------- */
+  #plane { position: fixed; left: 50%; top: 50%; width: 180px; margin: -30px 0 0 -90px; pointer-events: none; z-index: 2;
+    filter: drop-shadow(0 6px 8px rgba(0,0,0,.35)); transition: opacity .2s; }
+  #plane .flame { opacity: 0; transition: opacity .15s; }
+  #plane.boost .flame { opacity: 1; }
+  @media (max-width: 600px) { #plane { width: 130px; margin: -22px 0 0 -65px; } }
+
+  /* ---------- HUD ---------- */
+  .hud { position: fixed; z-index: 3; background: var(--hud); border: 1px solid var(--line); border-radius: 10px;
+    backdrop-filter: blur(6px); padding: 8px 12px; pointer-events: none; }
+  #where { top: 12px; left: 12px; max-width: min(360px, calc(100% - 24px)); }
+  #where b { display: block; font-size: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #where span { color: var(--hud-muted); font-size: 12px; }
+  #compass { top: 12px; left: 50%; transform: translateX(-50%); text-align: center; min-width: 110px; font-variant-numeric: tabular-nums; }
+  #compass b { font-size: 20px; letter-spacing: .04em; }
+  #target { top: 74px; left: 50%; transform: translateX(-50%); text-align: center; display: none; }
+  #target .arrow { display: block; margin: 0 auto 2px; transition: transform .1s linear; }
+  #target div { font-size: 13px; }
+  #race { top: 12px; right: 12px; text-align: right; display: none; font-variant-numeric: tabular-nums; }
+  #race b { font-size: 20px; display: block; }
+  #gauges { left: 12px; bottom: 12px; display: grid; grid-template-columns: auto auto; gap: 2px 14px; font-variant-numeric: tabular-nums; }
+  #gauges span { color: var(--hud-muted); font-size: 12px; }
+  #gauges b { font-size: 18px; text-align: right; }
+  #gauges .warn { color: var(--bad); }
+  #help { left: 50%; transform: translateX(-50%); bottom: 12px; font-size: 12px; color: var(--hud-muted); white-space: nowrap; }
+  @media (max-width: 900px) { #help { display: none; } }
+  #help kbd { background: rgba(255,255,255,.14); border-radius: 4px; padding: 0 5px; color: var(--hud-ink); font: 12px ui-monospace, monospace; }
+  #toast { top: 40%; left: 50%; transform: translate(-50%, -50%); font-size: 22px; font-weight: 700; display: none; text-align: center; }
+  #pauseBtn { position: fixed; z-index: 4; top: 12px; right: 12px; background: var(--hud); border: 1px solid var(--line); border-radius: 10px; padding: 8px 12px; display: none; }
+  body.racing #pauseBtn { top: 84px; }
+
+  @media (max-width: 600px) {
+    .hud { padding: 6px 9px; }
+    #where { max-width: calc(100% - 190px); }
+    #where b { font-size: 14px; }
+    #compass { left: auto; right: 64px; transform: none; min-width: 0; }
+    #compass b { font-size: 16px; }
+    #gauges b { font-size: 15px; }
+    #race { top: 64px; }
+    body.racing #pauseBtn { top: 12px; }
+    #target { top: 142px; right: 12px; left: auto; transform: none; }
+    .card h1 small { display: block; margin: 4px 0 0; }
+  }
+
+  /* ---------- touch controls ---------- */
+  .touch { display: none; }
+  @media (pointer: coarse) {
+    .touch { display: block; }
+    #help { display: none; }
+    #gauges { bottom: auto; top: 74px; }
+  }
+  #stick { position: fixed; z-index: 4; left: 20px; bottom: 24px; width: 140px; height: 140px; border-radius: 50%;
+    background: rgba(10,22,34,.35); border: 2px solid rgba(255,255,255,.35); }
+  #knob { position: absolute; left: 50%; top: 50%; width: 58px; height: 58px; margin: -29px 0 0 -29px; border-radius: 50%;
+    background: rgba(255,255,255,.75); box-shadow: 0 2px 8px rgba(0,0,0,.3); }
+  .tbtn { position: fixed; z-index: 4; right: 20px; width: 76px; height: 76px; border-radius: 50%; border: 2px solid rgba(255,255,255,.4);
+    background: rgba(10,22,34,.45); font-weight: 700; font-size: 13px; }
+  #boostBtn { bottom: 112px; }
+  #brakeBtn { bottom: 24px; }
+  .tbtn.on { background: var(--accent); color: #062014; }
+
+  /* ---------- menu ---------- */
+  .screen { position: fixed; inset: 0; z-index: 10; display: flex; padding: 16px;
+    background: linear-gradient(180deg, rgba(8,18,30,.35), rgba(8,18,30,.7)); overflow: auto; }
+  .screen[hidden] { display: none; }
+  .card { margin: auto; width: min(720px, 100%); background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 22px; box-shadow: 0 20px 60px rgba(0,0,0,.4); }
+  .card h1 { margin: 0; font-size: 30px; }
+  .card h1 small { font-size: 14px; color: var(--hud-muted); font-weight: 500; margin-left: 6px; }
+  .card p { color: var(--hud-muted); margin: 4px 0 16px; }
+  .card h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .08em; color: var(--hud-muted); margin: 14px 0 8px; }
+  body.inmenu #plane, body.inmenu .hud, body.inmenu .touch { display: none !important; }
+  .places { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; }
+  .chip { background: rgba(255,255,255,.08); border: 1px solid var(--line); border-radius: 10px; padding: 9px 10px; text-align: left; }
+  .chip small { display: block; color: var(--hud-muted); font-size: 12px; }
+  .chip[aria-pressed="true"] { background: var(--accent); color: #062014; border-color: transparent; }
+  .chip[aria-pressed="true"] small { color: #0b3b25; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; }
+  .search { display: flex; gap: 8px; margin-top: 8px; }
+  .search input { flex: 1; min-width: 0; background: rgba(255,255,255,.1); border: 1px solid var(--line); border-radius: 10px; padding: 9px 12px; color: var(--hud-ink); font: inherit; }
+  .search input::placeholder { color: var(--hud-muted); }
+  .results { display: grid; gap: 6px; margin-top: 8px; }
+  .go { margin-top: 20px; width: 100%; background: var(--accent); color: #062014; border: 0; border-radius: 12px; padding: 14px; font-size: 18px; font-weight: 800; letter-spacing: .02em; }
+  .keys { font-size: 13px; color: var(--hud-muted); margin-top: 14px; line-height: 1.7; }
+  .keys kbd { background: rgba(255,255,255,.14); border-radius: 4px; padding: 1px 6px; color: var(--hud-ink); font: 12px ui-monospace, monospace; }
+  .back { color: var(--hud-muted); font-size: 13px; display: inline-block; margin-top: 12px; }
+  .center { text-align: center; }
+  .big { font-size: 44px; line-height: 1; margin-bottom: 8px; }
+  #crash .card, #finish .card, #pause .card { width: min(420px, 100%); text-align: center; }
+  .row.center { justify-content: center; }
+  .btn2 { background: rgba(255,255,255,.1); border: 1px solid var(--line); border-radius: 12px; padding: 12px 16px; font-weight: 700; }
+  .btn2.primary { background: var(--accent); color: #062014; border-color: transparent; }
+
+  .beacon { width: 34px; height: 260px; pointer-events: none; display: flex; flex-direction: column; align-items: center; }
+  .beacon .beam { flex: 1; width: 10px; border-radius: 6px; background: linear-gradient(180deg, rgba(255,214,0,0), rgba(255,190,0,.95)); box-shadow: 0 0 18px 6px rgba(255,190,0,.55); animation: pulse 1.2s ease-in-out infinite; }
+  .beacon .ring { width: 34px; height: 34px; border-radius: 50%; border: 4px solid #ffd000; box-shadow: 0 0 12px #ffb000; background: rgba(255,208,0,.25); }
+  @keyframes pulse { 50% { opacity: .55; } }
+</style>
+</head>
+<body class="inmenu">
+<div id="map" aria-label="3D world"></div>
+
+<svg id="plane" viewBox="0 0 200 80" aria-hidden="true">
+  <circle class="flame" cx="100" cy="47" r="11" fill="#ffb000" opacity=".9"/>
+  <circle class="flame" cx="100" cy="47" r="6" fill="#fff3b0"/>
+  <path d="M100 38 L8 51 L8 58 L100 50 L192 58 L192 51 Z" fill="#eef3f8" stroke="#4d5f74" stroke-width="2" stroke-linejoin="round"/>
+  <path d="M100 38 L40 47 L40 50 L100 44 L160 50 L160 47 Z" fill="#2d7ff9" opacity=".85"/>
+  <ellipse cx="60" cy="56" rx="8" ry="6.5" fill="#cfd8e2" stroke="#4d5f74" stroke-width="1.5"/>
+  <ellipse cx="140" cy="56" rx="8" ry="6.5" fill="#cfd8e2" stroke="#4d5f74" stroke-width="1.5"/>
+  <circle cx="60" cy="56" r="3" fill="#2b3a4d"/><circle cx="140" cy="56" r="3" fill="#2b3a4d"/>
+  <path d="M100 33 L64 39 L64 42 L100 39 L136 42 L136 39 Z" fill="#e3eaf1" stroke="#4d5f74" stroke-width="1.5" stroke-linejoin="round"/>
+  <path d="M100 6 L93 38 L107 38 Z" fill="#e5484d" stroke="#8f1d22" stroke-width="1.5" stroke-linejoin="round"/>
+  <ellipse cx="100" cy="46" rx="13" ry="12" fill="#f7f9fc" stroke="#4d5f74" stroke-width="2"/>
+  <circle cx="100" cy="47" r="5.5" fill="#2b3a4d"/>
+  <rect x="5" y="49" width="6" height="11" rx="2" fill="#e5484d"/>
+  <rect x="189" y="49" width="6" height="11" rx="2" fill="#3ccf8e"/>
+</svg>
+
+<div class="hud" id="where"><b id="placeName">Earth Flight</b><span id="placeSub">Pick a place to take off</span></div>
+<div class="hud" id="compass"><b id="hdg">N 000°</b></div>
+<div class="hud" id="target"><svg class="arrow" id="tArrow" viewBox="0 0 24 24" width="30" height="30" aria-hidden="true"><path d="M12 2 L21 21 L12 16 L3 21 Z" fill="#ffb020" stroke="#7a4b00" stroke-width="1.2" stroke-linejoin="round"/></svg><div id="tText"></div></div>
+<div class="hud" id="race"><span>Checkpoint <span id="rIdx">1</span>/<span id="rTotal">8</span></span><b id="rTime">0:00.0</b><span id="rBest"></span></div>
+<div class="hud" id="gauges">
+  <span>Speed</span><b id="gSpeed">0 km/h</b>
+  <span>Altitude</span><b id="gAlt">0 m</b>
+  <span>Above ground</span><b id="gAgl">0 m</b>
+</div>
+<div class="hud" id="help"><kbd>←</kbd><kbd>→</kbd> turn · <kbd>↑</kbd><kbd>↓</kbd> climb / dive · <kbd>Shift</kbd> boost · <kbd>Space</kbd> slow · <kbd>C</kbd> camera · <kbd>Esc</kbd> pause</div>
+<div class="hud" id="toast"></div>
+<button id="pauseBtn" type="button" aria-label="Pause">⏸</button>
+
+<div class="touch">
+  <div id="stick"><div id="knob"></div></div>
+  <button class="tbtn" id="boostBtn" type="button">BOOST</button>
+  <button class="tbtn" id="brakeBtn" type="button">SLOW</button>
+</div>
+
+<!-- start menu -->
+<div class="screen" id="menu">
+  <div class="card">
+    <h1>✈️ Earth Flight <small>the whole real world, in 3D</small></h1>
+    <p>Fly over real cities with 3D buildings and roads, real satellite photos and real mountains. Don't hit anything.</p>
+
+    <h2>Take off from</h2>
+    <div class="places" id="places"></div>
+    <form class="search" id="searchForm">
+      <input id="q" placeholder="…or search anywhere: your town, a landmark" autocomplete="off" aria-label="Search a place">
+      <button class="btn2" type="submit">Search</button>
+    </form>
+    <div class="results" id="results"></div>
+
+    <h2>Map</h2>
+    <div class="row" id="styleRow">
+      <button class="chip" type="button" data-style="streets" aria-pressed="true">🏙️ Streets 3D<small>Colorful roads, parks, buildings</small></button>
+      <button class="chip" type="button" data-style="satellite" aria-pressed="false">🛰️ Satellite<small>Real photos: trees, roofs, water</small></button>
+    </div>
+
+    <h2>Game</h2>
+    <div class="row" id="modeRow">
+      <button class="chip" type="button" data-mode="free" aria-pressed="true">🕊️ Free flight<small>Explore at your own pace</small></button>
+      <button class="chip" type="button" data-mode="race" aria-pressed="false">🏁 Checkpoint race<small>8 beacons, beat your time</small></button>
+    </div>
+
+    <button class="go" id="takeoff" type="button">Take off</button>
+    <div class="keys">
+      <kbd>←</kbd> <kbd>→</kbd> or <kbd>A</kbd> <kbd>D</kbd> turn · <kbd>↑</kbd> <kbd>↓</kbd> or <kbd>W</kbd> <kbd>S</kbd> climb and dive · <kbd>Shift</kbd> boost · <kbd>Space</kbd> slow down · <kbd>C</kbd> change camera · <kbd>Esc</kbd> pause.
+      On a phone, use the stick and the buttons. Gamepads work too.
+    </div>
+    <a class="back" href="./">← Back to the Earth API map</a>
+  </div>
+</div>
+
+<div class="screen" id="pause" hidden>
+  <div class="card">
+    <div class="big">⏸</div>
+    <h1>Paused</h1>
+    <div class="row center" style="margin-top:16px">
+      <button class="btn2 primary" id="resume" type="button">Resume</button>
+      <button class="btn2" id="toMenu1" type="button">Main menu</button>
+    </div>
+  </div>
+</div>
+
+<div class="screen" id="crash" hidden>
+  <div class="card">
+    <div class="big">💥</div>
+    <h1 id="crashTitle">Crashed!</h1>
+    <p id="crashText"></p>
+    <div class="row center">
+      <button class="btn2 primary" id="respawn" type="button">Try again</button>
+      <button class="btn2" id="toMenu2" type="button">Main menu</button>
+    </div>
+  </div>
+</div>
+
+<div class="screen" id="finish" hidden>
+  <div class="card">
+    <div class="big">🏁</div>
+    <h1 id="finishTime">0:00.0</h1>
+    <p id="finishText"></p>
+    <div class="row center">
+      <button class="btn2 primary" id="again" type="button">Race again</button>
+      <button class="btn2" id="freeFly" type="button">Keep flying</button>
+      <button class="btn2" id="toMenu3" type="button">Main menu</button>
+    </div>
+  </div>
+</div>
+
+<script src="earth-browser.js"></script>
+<script src="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.js"></script>
+<script src="fly.js"></script>
+</body>
+</html>

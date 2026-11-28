@@ -197,7 +197,8 @@ async function showPoint(lat, lon, known) {
       <div class="stat"><span>Daylight</span><b>${s ? fmt(s.dayLengthHours, 1) + " h" : "–"}</b></div>
       <div class="stat"><span>Moon</span><b style="font-size:14px">${esc(s?.moon.phase || "–")}</b></div>
     </div>
-    <div class="sub" style="margin:10px 0 0">${tz ? "Times in local time (" + esc(tz) + ")" : ""}</div>`;
+    <div class="sub" style="margin:10px 0 0">${tz ? "Times in local time (" + esc(tz) + ")" : ""}</div>
+    <a class="flyhere" href="fly.html?lat=${lat}&lon=${lon}&name=${encodeURIComponent(title)}">✈️ Fly from here</a>`;
 }
 $("infoClose").onclick = () => { $("info").classList.remove("open"); pin?.remove(); };
 
