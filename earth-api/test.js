@@ -112,3 +112,12 @@ test("CORS and OPTIONS", async () => {
   assert.equal(res.headers.get("access-control-allow-origin"), "*");
   assert.equal((await handle(new Request("https://x/api/sun", { method: "OPTIONS" }))).status, 204);
 });
+
+test("reverse geocode", async () => {
+  mocks["nominatim.openstreetmap.org"] = { name: "Statue of Liberty", display_name: "Statue of Liberty, Liberty Island, New York, United States", type: "attraction", address: { city: "New York", state: "New York", country: "United States", country_code: "us" } };
+  const r = (await get("/api/reverse?lat=40.6892&lon=-74.0445")).body;
+  assert.equal(r.name, "Statue of Liberty");
+  assert.equal(r.countryCode, "US");
+  mocks["nominatim.openstreetmap.org"] = { error: "Unable to geocode" };
+  assert.equal((await get("/api/reverse?lat=0&lon=-30")).body.name, null);
+});

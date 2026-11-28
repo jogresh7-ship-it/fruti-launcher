@@ -324,6 +324,31 @@ route("/geocode", "Find places by name. Data: Open-Meteo Geocoding.", "/geocode?
   };
 });
 
+route("/reverse", "What is at a point: address, town, country. Data: OpenStreetMap Nominatim.",
+  "/reverse?lat=40.6892&lon=-74.0445", async (p) => {
+    const { lat, lon } = latLon(p);
+    const zoom = num(p, "zoom", { min: 3, max: 18, fallback: 14 });
+    const d = await getJson(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lon}&zoom=${zoom}&accept-language=en`);
+    if (d.error) {
+      return { body: { lat, lon, name: null, nearest: "Open ocean or no named place", source: "© OpenStreetMap contributors (ODbL)" }, maxAge: 86400 };
+    }
+    const a = d.address || {};
+    return {
+      body: {
+        lat, lon,
+        name: d.name || null,
+        nearest: d.display_name || null,
+        kind: d.type || null,
+        town: a.city || a.town || a.village || a.hamlet || a.suburb || null,
+        region: a.state || a.region || a.county || null,
+        country: a.country || null,
+        countryCode: a.country_code ? a.country_code.toUpperCase() : null,
+        source: "© OpenStreetMap contributors (ODbL), Nominatim",
+      },
+      maxAge: 86400,
+    };
+  });
+
 async function weatherFor(lat, lon, days = 3) {
   const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}` +
     "&current=temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,wind_direction_10m,is_day" +
