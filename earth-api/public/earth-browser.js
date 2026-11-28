@@ -307,23 +307,36 @@ route("/random", "A random spot on Earth, spread evenly over the globe. My own m
   };
 });
 
-route("/geocode", "Find places by name. Data: Open-Meteo Geocoding.", "/geocode?q=Tokyo&count=3", async (p) => {
-  const q = (p.get("q") || "").trim();
-  if (q.length < 2) throw new ApiError(400, `"q" needs at least 2 letters.`);
-  const count = num(p, "count", { min: 1, max: 20, fallback: 5 });
+// Towns and cities come from Open-Meteo. Landmarks, streets and anything else
+// (Eiffel Tower, Central Park, Mount Fuji) fall back to OpenStreetMap.
+async function searchPlaces(q, count) {
   const data = await getJson(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(q)}&count=${count}&language=en&format=json`);
-  return {
-    body: {
-      query: q,
-      results: (data.results || []).map((r) => ({
+  if (data.results?.length) {
+    return {
+      results: data.results.map((r) => ({
         name: r.name, region: r.admin1 || null, country: r.country || null, countryCode: r.country_code || null,
         lat: r.latitude, lon: r.longitude, elevationM: r.elevation ?? null,
         population: r.population ?? null, timezone: r.timezone || null,
       })),
       source: "Open-Meteo (open-meteo.com), CC BY 4.0",
-    },
-    maxAge: 86400,
+    };
+  }
+  const osm = await getJson(`https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&accept-language=en&limit=${count}&q=${encodeURIComponent(q)}`);
+  return {
+    results: (Array.isArray(osm) ? osm : []).map((r) => ({
+      name: r.name || (r.display_name || "").split(",")[0], region: r.address?.state || null,
+      country: r.address?.country || null, countryCode: r.address?.country_code ? r.address.country_code.toUpperCase() : null,
+      lat: Number(r.lat), lon: Number(r.lon), elevationM: null, population: null, timezone: null, kind: r.type || null,
+    })),
+    source: "© OpenStreetMap contributors (ODbL), Nominatim",
   };
+}
+
+route("/geocode", "Find places, landmarks and addresses by name. Data: Open-Meteo Geocoding, then OpenStreetMap.", "/geocode?q=Eiffel Tower&count=3", async (p) => {
+  const q = (p.get("q") || "").trim();
+  if (q.length < 2) throw new ApiError(400, `"q" needs at least 2 letters.`);
+  const count = num(p, "count", { min: 1, max: 20, fallback: 5 });
+  return { body: { query: q, ...(await searchPlaces(q, count)) }, maxAge: 86400 };
 });
 
 route("/reverse", "What is at a point: address, town, country. Data: OpenStreetMap Nominatim.",
@@ -480,39 +493,70 @@ route("/events", "Natural events happening now: wildfires, storms, volcanoes, fl
     };
   });
 
-const COUNTRY_FIELDS = "name,cca2,cca3,capital,region,subregion,population,area,languages,currencies,flag,flags,latlng,timezones,borders,continents,maps";
+// Countries come from the World Bank's free API (REST Countries proved unreachable).
+const WORLD_BANK = "https://api.worldbank.org/v2";
+let countryList = null;
 
-function tidyCountry(c) {
+const coord = (v) => (v === "" || v === null || v === undefined || !Number.isFinite(Number(v)) ? null : Number(v));
+const flagEmoji = (code) => (/^[A-Z]{2}$/.test(code) ? String.fromCodePoint(...[...code].map((ch) => 127397 + ch.charCodeAt(0))) : null);
+
+async function allCountries() {
+  if (!countryList) {
+    const d = await getJson(`${WORLD_BANK}/country?format=json&per_page=400`, 15000);
+    // Drop groupings such as "World" or "Euro area"; keep real countries.
+    countryList = (d?.[1] || []).filter((c) => (c.region?.value || "").trim() !== "Aggregates");
+  }
+  return countryList;
+}
+
+async function countryInfo(c) {
+  let population = null, populationYear = null, areaKm2 = null;
+  try {
+    const d = await getJson(`${WORLD_BANK}/country/${c.iso2Code}/indicator/SP.POP.TOTL;AG.SRF.TOTL.K2?format=json&mrnev=1&source=2`);
+    for (const row of d?.[1] || []) {
+      if (row.indicator?.id === "SP.POP.TOTL") { population = row.value; populationYear = row.date; }
+      if (row.indicator?.id === "AG.SRF.TOTL.K2") areaKm2 = row.value;
+    }
+  } catch { /* the basics below are still useful without numbers */ }
+  const code = (c.iso2Code || "").toUpperCase();
+  const lat = coord(c.latitude), lon = coord(c.longitude);
   return {
-    name: c.name?.common, officialName: c.name?.official, code: c.cca2, code3: c.cca3,
-    flag: c.flag, flagImage: c.flags?.svg || c.flags?.png || null,
-    capital: c.capital?.[0] || null, region: c.region, subregion: c.subregion || null,
-    continents: c.continents || [], population: c.population, areaKm2: c.area,
-    peoplePerKm2: c.area ? round(c.population / c.area, 1) : null,
-    languages: Object.values(c.languages || {}),
-    currencies: Object.entries(c.currencies || {}).map(([code, v]) => ({ code, name: v.name, symbol: v.symbol || null })),
-    lat: c.latlng?.[0] ?? null, lon: c.latlng?.[1] ?? null,
-    timezones: c.timezones || [], borders: c.borders || [],
-    map: c.maps?.openStreetMaps || c.maps?.googleMaps || null,
+    name: c.name, code, code3: c.id,
+    flag: flagEmoji(code),
+    flagImage: code ? `https://flagcdn.com/${code.toLowerCase()}.svg` : null,
+    capital: c.capitalCity || null,
+    region: (c.region?.value || "").trim() || null,
+    incomeLevel: c.incomeLevel?.value || null,
+    population, populationYear, areaKm2,
+    peoplePerKm2: population && areaKm2 ? round(population / areaKm2, 1) : null,
+    lat, lon,
+    map: lat !== null ? `https://www.openstreetmap.org/#map=5/${lat}/${lon}` : null,
   };
 }
 
 async function countryBy(code, name) {
   if (code) {
     if (!/^[a-zA-Z]{2,3}$/.test(code)) throw new ApiError(400, `"code" must be 2 or 3 letters, like FR or FRA.`);
-    const d = await getJson(`https://restcountries.com/v3.1/alpha/${code}?fields=${COUNTRY_FIELDS}`);
-    return [tidyCountry(Array.isArray(d) ? d[0] : d)];
+    const d = await getJson(`${WORLD_BANK}/country/${code}?format=json`);
+    const c = d?.[1]?.[0];
+    if (!c) throw new ApiError(404, `No country with code "${code}".`);
+    return [await countryInfo(c)];
   }
   if (name) {
-    const d = await getJson(`https://restcountries.com/v3.1/name/${encodeURIComponent(name)}?fields=${COUNTRY_FIELDS}`);
-    return d.map(tidyCountry);
+    const n = name.toLowerCase();
+    const all = await allCountries();
+    const hits = all.filter((c) => c.name.toLowerCase() === n)
+      .concat(all.filter((c) => c.name.toLowerCase() !== n && c.name.toLowerCase().includes(n)))
+      .slice(0, 5);
+    if (!hits.length) throw new ApiError(404, `No country called "${name}".`);
+    return Promise.all(hits.map(countryInfo));
   }
   throw new ApiError(400, `Give "code" (like JP) or "name" (like japan).`);
 }
 
-route("/country", "Facts about a country: capital, population, languages, flag. Data: REST Countries.",
+route("/country", "Facts about a country: capital, population, area, region, flag. Data: World Bank.",
   "/country?code=BR", async (p) => ({
-    body: { results: await countryBy(p.get("code"), (p.get("name") || "").trim()), source: "REST Countries (restcountries.com)" },
+    body: { results: await countryBy(p.get("code"), (p.get("name") || "").trim()), source: "World Bank Open Data (data.worldbank.org), CC BY 4.0" },
     maxAge: 86400,
   }));
 
@@ -534,14 +578,13 @@ route("/place", "Everything about one place in one call: location, weather, air,
   "/place?q=Reykjavik", async (p) => {
     const q = (p.get("q") || "").trim();
     if (q.length < 2) throw new ApiError(400, `"q" needs at least 2 letters.`);
-    const g = await getJson(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(q)}&count=1&language=en&format=json`);
-    const r = g.results?.[0];
+    const r = (await searchPlaces(q, 1)).results[0];
     if (!r) throw new ApiError(404, `No place called "${q}".`);
-    const lat = r.latitude, lon = r.longitude;
+    const lat = r.lat, lon = r.lon;
     const [weather, air, country] = await Promise.allSettled([
       weatherFor(lat, lon, 3),
       airFor(lat, lon),
-      r.country_code ? countryBy(r.country_code) : Promise.resolve([null]),
+      r.countryCode ? countryBy(r.countryCode) : Promise.resolve([null]),
     ]);
     const now = new Date();
     const pos = sunPosition(now, lat, lon);
@@ -549,14 +592,14 @@ route("/place", "Everything about one place in one call: location, weather, air,
     const strip = (o) => { if (o && !o.error) { delete o.lat; delete o.lon; delete o.source; } return o; };
     return {
       body: {
-        place: { name: r.name, region: r.admin1 || null, country: r.country || null, lat, lon,
-          elevationM: r.elevation ?? null, population: r.population ?? null, timezone: r.timezone || null },
+        place: { name: r.name, region: r.region, country: r.country, lat, lon,
+          elevationM: r.elevationM, population: r.population, timezone: r.timezone || weather.value?.timezone || null },
         weather: strip(settled(weather)),
         air: strip(settled(air)),
         sun: { ...sunTimes(now, lat, lon), altitudeDeg: round(pos.altitude, 1), direction: compass(pos.azimuth) },
         moon: moonPhase(now),
         country: country.status === "fulfilled" ? country.value[0] : { error: country.reason?.message || "unavailable" },
-        sources: ["Open-Meteo (CC BY 4.0)", "REST Countries", "Earth API's own sun and moon math"],
+        sources: ["Open-Meteo (CC BY 4.0)", "World Bank Open Data (CC BY 4.0)", "OpenStreetMap (ODbL)", "Earth API's own sun and moon math"],
       },
       maxAge: 600,
     };

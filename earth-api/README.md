@@ -4,6 +4,20 @@ A free JSON API about planet Earth. No API key, no sign-up, no npm packages.
 
 Part of it is its own math (sun, moon, distance, random points, Earth facts). The rest wraps free, keyless public APIs and cleans up what they return.
 
+**Live:** https://earth-api.pages.dev
+
+## The map
+
+The home page is a live 3D map of the whole planet:
+
+- **Streets:** colorful map with green parks and forests, blue water, and buildings that rise in 3D when you zoom in.
+- **Satellite:** real aerial photos, so you see the actual colors of trees, fields, beaches and roofs, with 3D buildings and labels on top.
+- **Terrain:** topographic map with forests, contour lines, rivers and peaks.
+- **3D mountains**, **globe view**, and live layers for **earthquakes**, **wildfires / storms / volcanoes** and the **space station**.
+- Search any town or landmark, or click anywhere to see the place name, weather, air quality, elevation, sunrise, sunset and moon.
+
+Map data: [OpenFreeMap](https://openfreemap.org) and © OpenStreetMap contributors, Esri World Imagery, OpenTopoMap and Mapzen terrain tiles. Drawn with [MapLibre GL JS](https://maplibre.org) 5.24.0.
+
 ## Endpoints
 
 | Endpoint | What it gives you | Data |
@@ -15,13 +29,14 @@ Part of it is its own math (sun, moon, distance, random points, Earth facts). Th
 | `/api/distance?from=48.85,2.35&to=40.71,-74.01` | Distance (km, miles, nautical), bearing, midpoint | Own math |
 | `/api/random` | Random spot on Earth and its antipode | Own math |
 | `/api/place?q=Reykjavik` | Location + weather + air + sun + moon + country in one call | Own mashup |
-| `/api/geocode?q=Tokyo&count=3` | Find places by name | [Open-Meteo](https://open-meteo.com) |
+| `/api/geocode?q=Eiffel Tower&count=3` | Find towns, landmarks and addresses by name | [Open-Meteo](https://open-meteo.com), then OpenStreetMap |
+| `/api/reverse?lat=40.6892&lon=-74.0445` | What's at a point: name, town, region, country | [OpenStreetMap Nominatim](https://nominatim.org) |
 | `/api/weather?lat=..&lon=..&days=3` | Current weather and forecast (1–16 days) | Open-Meteo |
 | `/api/air?lat=..&lon=..` | AQI, PM2.5, PM10, ozone, UV | Open-Meteo Air Quality |
 | `/api/elevation?lat=..&lon=..` | Height above sea level | Copernicus DEM via Open-Meteo |
 | `/api/earthquakes?minmag=4.5&days=7&limit=10` | Recent quakes; add `lat`, `lon`, `radius` (km) to search near a point | [USGS](https://earthquake.usgs.gov) |
 | `/api/events?category=wildfires` | Open natural events: `wildfires`, `severeStorms`, `volcanoes`, `floods`, `seaLakeIce` … | [NASA EONET](https://eonet.gsfc.nasa.gov) |
-| `/api/country?code=BR` or `?name=japan` | Capital, population, languages, currencies, flag | [REST Countries](https://restcountries.com) |
+| `/api/country?code=BR` or `?name=japan` | Capital, population, area, region, income level, flag | [World Bank](https://data.worldbank.org) |
 | `/api/iss` | Where the International Space Station is now | [wheretheiss.at](https://wheretheiss.at) |
 
 All responses are JSON with `access-control-allow-origin: *`, so any website can call them. Errors look like `{"error": "..."}` with status 400, 404 or 502.
@@ -58,6 +73,6 @@ cd earth-api && npx wrangler pages deploy public
 
 ## Credits
 
-Weather, air quality, geocoding and elevation: Open-Meteo, CC BY 4.0. Earthquakes: U.S. Geological Survey (public domain). Natural events: NASA EONET. Countries: REST Countries. ISS: wheretheiss.at. Sun and moon formulas follow the standard NOAA / Astronomical Algorithms approximations.
+Weather, air quality, geocoding and elevation: Open-Meteo, CC BY 4.0. Earthquakes: U.S. Geological Survey (public domain). Natural events: NASA EONET. Countries: World Bank Open Data, CC BY 4.0. Place names: © OpenStreetMap contributors (ODbL). ISS: wheretheiss.at. Sun and moon formulas follow the standard NOAA / Astronomical Algorithms approximations.
 
 License: MIT.

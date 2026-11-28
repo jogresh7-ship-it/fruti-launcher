@@ -11,7 +11,17 @@ const mocks = {
     daily: { time: ["2026-11-28"], weather_code: [61], temperature_2m_max: [9], temperature_2m_min: [3], precipitation_sum: [2.1], uv_index_max: [1.2] },
   },
   "air-quality-api.open-meteo.com": { current: { time: "2026-11-28T10:00", us_aqi: 42, european_aqi: 30, pm2_5: 8, pm10: 14, ozone: 40, nitrogen_dioxide: 20, carbon_monoxide: 200, uv_index: 1 } },
-  "restcountries.com": { name: { common: "France", official: "French Republic" }, cca2: "FR", cca3: "FRA", capital: ["Paris"], region: "Europe", population: 68000000, area: 551695, languages: { fra: "French" }, currencies: { EUR: { name: "Euro", symbol: "€" } }, flag: "🇫🇷", latlng: [46, 2] },
+  // Shapes copied from real World Bank responses.
+  "api.worldbank.org": (u) => {
+    const france = { id: "FRA", iso2Code: "FR", name: "France", region: { value: "Europe & Central Asia" }, incomeLevel: { value: "High income" }, capitalCity: "Paris", longitude: "2.35097", latitude: "48.8566" };
+    const world = { id: "WLD", iso2Code: "1W", name: "World", region: { value: "Aggregates" }, capitalCity: "", longitude: "", latitude: "" };
+    if (u.pathname.includes("/indicator/")) return [{ page: 1 }, [
+      { indicator: { id: "SP.POP.TOTL" }, date: "2025", value: 68400000 },
+      { indicator: { id: "AG.SRF.TOTL.K2" }, date: "2024", value: 549087 }]];
+    if (u.pathname.endsWith("/country")) return [{ page: 1 }, [world, france]];
+    if (u.pathname.endsWith("/country/fr") || u.pathname.endsWith("/country/FR")) return [{ page: 1 }, [france]];
+    return [{ message: [{ id: "120", key: "Invalid value" }] }];
+  },
   "earthquake.usgs.gov": { features: [
     { id: "a", properties: { mag: 5.1, place: "Somewhere", time: 1764300000000, tsunami: 0, url: "u" }, geometry: { coordinates: [140, 35, 10] } },
     { id: "b", properties: { mag: 6.3, place: "Elsewhere", time: 1764300000000, tsunami: 1, url: "u" }, geometry: { coordinates: [-70, -30, 30] } }] },
@@ -97,13 +107,39 @@ test("earthquakes and events", async () => {
 });
 
 test("country, iss, place mashup", async () => {
-  assert.equal((await get("/api/country?code=fr")).body.results[0].capital, "Paris");
+  const fr = (await get("/api/country?code=fr")).body.results[0];
+  assert.equal(fr.capital, "Paris");
+  assert.equal(fr.flag, "🇫🇷");
+  assert.equal(fr.population, 68400000);
+  assert.equal(fr.peoplePerKm2, 124.6);
+  assert.equal(fr.lat, 48.8566);
+  assert.equal((await get("/api/country?code=ZZ")).status, 404);
+  const byName = (await get("/api/country?name=fran")).body.results;
+  assert.deepEqual(byName.map((c) => c.name), ["France"]); // "World" grouping is filtered out
   assert.equal((await get("/api/iss")).body.inSunlight, true);
   const p = (await get("/api/place?q=Paris")).body;
   assert.equal(p.place.country, "France");
-  assert.equal(p.country.currencies[0].code, "EUR");
+  assert.equal(p.country.capital, "Paris");
   assert.equal(p.weather.current.temperatureC, 7.1);
   assert.ok(p.sun.sunrise);
+});
+
+test("landmark search falls back to OpenStreetMap", async () => {
+  const saved = mocks["geocoding-api.open-meteo.com"];
+  mocks["geocoding-api.open-meteo.com"] = { generationtime_ms: 0.1 }; // Open-Meteo's real "no results" answer
+  mocks["nominatim.openstreetmap.org"] = [{ name: "Eiffel Tower", display_name: "Eiffel Tower, Paris, France", lat: "48.8582599", lon: "2.2945006", type: "attraction", address: { state: "Île-de-France", country: "France", country_code: "fr" } }];
+  try {
+    const g = (await get("/api/geocode?q=Eiffel%20Tower")).body;
+    assert.equal(g.results[0].name, "Eiffel Tower");
+    assert.equal(g.results[0].lat, 48.8582599);
+    assert.equal(g.results[0].countryCode, "FR");
+    assert.match(g.source, /OpenStreetMap/);
+    const p = (await get("/api/place?q=Eiffel%20Tower")).body;
+    assert.equal(p.place.name, "Eiffel Tower");
+    assert.equal(p.country.name, "France");
+  } finally {
+    mocks["geocoding-api.open-meteo.com"] = saved;
+  }
 });
 
 test("CORS and OPTIONS", async () => {
