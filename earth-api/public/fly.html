@@ -103,6 +103,8 @@
   .keys { font-size: 13px; color: var(--hud-muted); margin-top: 14px; line-height: 1.7; }
   .keys kbd { background: rgba(255,255,255,.14); border-radius: 4px; padding: 1px 6px; color: var(--hud-ink); font: 12px ui-monospace, monospace; }
   .back { color: var(--hud-muted); font-size: 13px; display: inline-block; margin-top: 12px; }
+  .credits { font-size: 11px !important; margin: 10px 0 0 !important; }
+  .credits a { color: var(--hud-muted); }
   .center { text-align: center; }
   .big { font-size: 44px; line-height: 1; margin-bottom: 8px; }
   #crash .card, #finish .card, #pause .card { width: min(420px, 100%); text-align: center; }
@@ -158,7 +160,7 @@
 <div class="screen" id="menu">
   <div class="card">
     <h1>✈️ Earth Flight <small>the whole real world, in 3D</small></h1>
-    <p>Fly over real cities with 3D buildings and roads, real satellite photos and real mountains. Don't hit anything.</p>
+    <p>Fly an A340 over real cities with 3D buildings and roads, real satellite photos, forests and mountains. Fly under the Eiffel Tower's arches in Paris. Don't hit anything.</p>
 
     <h2>Take off from</h2>
     <div class="places" id="places"></div>
@@ -170,8 +172,8 @@
 
     <h2>Map</h2>
     <div class="row" id="styleRow">
-      <button class="chip" type="button" data-style="streets" aria-pressed="true">🏙️ Streets 3D<small>Colorful roads, parks, buildings</small></button>
-      <button class="chip" type="button" data-style="satellite" aria-pressed="false">🛰️ Satellite<small>Real photos: trees, roofs, water</small></button>
+      <button class="chip" type="button" data-style="satellite" aria-pressed="true">🛰️ Satellite<small>Real photos: trees, roofs, water</small></button>
+      <button class="chip" type="button" data-style="streets" aria-pressed="false">🏙️ Streets 3D<small>Colorful roads, parks, buildings</small></button>
     </div>
 
     <h2>Game</h2>
@@ -186,6 +188,10 @@
       On a phone, use the stick and the buttons. Gamepads work too.
     </div>
     <a class="back" href="./">← Back to the Earth API map</a>
+    <p class="credits">3D models (CC BY 4.0): <a href="https://sketchfab.com/3d-models/plane-a340-d3ad0996a8564a94a24ee4b3528b554b" target="_blank" rel="noopener">plane a340</a> by mamont nikita ·
+      <a href="https://sketchfab.com/3d-models/eiffel-tower-3d-62e7979eb5ed4b80886c756372bcf781" target="_blank" rel="noopener">Eiffel Tower 3D</a> by moustafatarek27 ·
+      <a href="https://sketchfab.com/3d-models/low-poly-forest-tree-pack-5ff5a51e74324845a4e4905f182dfb2b" target="_blank" rel="noopener">Low Poly Forest Tree Pack</a> by 99.Miles.
+      Map © OpenStreetMap contributors, OpenFreeMap, Esri, Mapzen.</p>
   </div>
 </div>
 
@@ -225,8 +231,15 @@
   </div>
 </div>
 
+<script type="importmap">
+{ "imports": {
+  "three": "https://unpkg.com/three@0.179.1/build/three.module.js",
+  "three/addons/": "https://unpkg.com/three@0.179.1/examples/jsm/"
+} }
+</script>
 <script src="earth-browser.js"></script>
 <script src="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.js"></script>
 <script src="fly.js"></script>
+<script type="module" src="fly3d.js"></script>
 </body>
 </html>

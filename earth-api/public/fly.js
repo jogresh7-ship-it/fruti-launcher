@@ -64,7 +64,7 @@
       start = { name: params.get("name") || "Your spot", sub: "From the map", lat, lon, heading: 0, alt: null };
     }
   }
-  let styleName = "streets";
+  let styleName = "satellite"; // real photos by default, like the main map's Satellite view
   let mode = "free";
   let camMode = 0; // 0 chase, 1 far chase, 2 cockpit
   const plane = { lat: 0, lon: 0, alt: 300, heading: 0, pitch: 0, roll: 0, speed: 90 };
@@ -76,7 +76,7 @@
 
   // ---------- map ----------
   const map = new maplibregl.Map({
-    container: "map", style: STYLES.streets, center: [start.lon, start.lat], zoom: 15.5, pitch: 70, bearing: start.heading,
+    container: "map", style: STYLES[styleName], center: [start.lon, start.lat], zoom: 15.5, pitch: 70, bearing: start.heading,
     maxPitch: 100, attributionControl: { compact: true }, interactive: false, fadeDuration: 0,
   });
 
@@ -104,11 +104,11 @@
     }
     map.setTerrain({ source: "dem", exaggeration: 1 });
     // Shade the slopes so hills and mountains look 3D on the colorful street map too.
-    if (!map.getSource("hills")) {
+    if (!map.getSource("hills") && styleName === "streets") {
       map.addSource("hills", { type: "raster-dem", encoding: "terrarium", tileSize: 256, maxzoom: 15,
         tiles: ["https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png"] });
     }
-    if (!map.getLayer("hillshade")) {
+    if (!map.getLayer("hillshade") && styleName === "streets") { // photos already have real shadows
       const firstSymbol = map.getStyle().layers.find((l) => l.type === "symbol" || l.id === "labels")?.id;
       map.addLayer({ id: "hillshade", type: "hillshade", source: "hills",
         paint: { "hillshade-exaggeration": 0.45, "hillshade-shadow-color": "#2f4a3a", "hillshade-highlight-color": "#fffbe8", "hillshade-accent-color": "#5b6b4a" } }, firstSymbol);
@@ -118,7 +118,25 @@
         "sky-horizon-blend": 0.6, "horizon-fog-blend": 0.7, "fog-ground-blend": 0.5, "atmosphere-blend": 0.9 });
     } catch { /* sky not supported */ }
     try { addBuildings(); } catch (e) { console.warn("buildings:", e); }
+    styleReady = true;
+    add3D();
   });
+
+  // ---------- 3D models (fly3d.js, a module that may load after this file) ----------
+  let model3D = false; // true once the 3D plane replaces the flat picture
+  const game3D = {
+    plane: () => plane,
+    ground: (lon, lat) => groundAt(lon, lat),
+    flying: () => state === "flying",
+    showPlane: () => camMode !== 2 && state !== "menu",
+    onPlaneReady() { model3D = true; $("plane").style.display = "none"; },
+  };
+  let styleReady = false;
+  function add3D() {
+    if (!window.EarthFlight3D || !styleReady) return;
+    try { window.EarthFlight3D.addTo(map, game3D); } catch (e) { console.warn("3D models:", e); }
+  }
+  addEventListener("earthflight3d-ready", add3D);
   map.on("error", (e) => console.warn("map:", e.error?.message || e));
 
   // ---------- menu ----------
@@ -139,6 +157,7 @@
   }
   document.querySelectorAll("#styleRow [data-style]").forEach((b) => b.onclick = () => {
     styleName = b.dataset.style; pressGroup("styleRow", "data-style", styleName);
+    styleReady = false;
     map.setStyle(STYLES[styleName]);
   });
   document.querySelectorAll("#modeRow [data-mode]").forEach((b) => b.onclick = () => {
@@ -260,8 +279,9 @@
 
   function updateCamera() {
     const h = plane.heading * RAD;
-    const back = camMode === 0 ? 70 + plane.speed * 0.22 : camMode === 1 ? 260 + plane.speed * 0.4 : -2;
-    const up = camMode === 0 ? 16 + plane.speed * 0.04 : camMode === 1 ? 90 : 0;
+    const big = model3D ? 1.7 : 1; // the 3D airliner is bigger than the flat picture
+    const back = camMode === 0 ? (70 + plane.speed * 0.22) * big : camMode === 1 ? (260 + plane.speed * 0.4) * big : -2;
+    const up = camMode === 0 ? (16 + plane.speed * 0.04) * big : camMode === 1 ? 90 * big : 0;
     const camLat = plane.lat - (back * Math.cos(h)) / M_PER_DEG;
     const camLon = plane.lon - (back * Math.sin(h)) / (M_PER_DEG * Math.cos(plane.lat * RAD));
     const camAlt = Math.max(plane.alt + up, groundAt(camLon, camLat) + 5);
@@ -287,6 +307,7 @@
   // looks ahead, so the ground right under the plane is usually off screen. We
   // remember buildings as they come into view and test the plane against that memory.
   const buildings = new Map();
+  const LANDMARK_SPOTS = [{ lon: 2.294481, lat: 48.858258, r: 90 }]; // Eiffel Tower: fly3d.js handles its shape
   function scanBuildings() {
     if (!map.getSource("openmaptiles")) return;
     const agl = plane.alt - ground;
@@ -306,6 +327,8 @@
         let minX = 180, minY = 90, maxX = -180, maxY = -90;
         for (const [x, y] of rings[0]) { if (x < minX) minX = x; if (x > maxX) maxX = x; if (y < minY) minY = y; if (y > maxY) maxY = y; }
         const key = `${minX.toFixed(6)},${minY.toFixed(6)},${maxX.toFixed(6)},${maxY.toFixed(6)}`;
+        const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2;
+        if (LANDMARK_SPOTS.some((l) => Math.abs(cx - l.lon) < l.r / (M_PER_DEG * Math.cos(cy * RAD)) && Math.abs(cy - l.lat) < l.r / M_PER_DEG)) continue;
         if (!buildings.has(key)) {
           buildings.set(key, { rings, minX, minY, maxX, maxY,
             top: f.properties.render_height ?? 8, base: f.properties.render_min_height ?? 0 });
@@ -328,9 +351,9 @@
     return null;
   }
 
-  function crash(what) {
+  function crash(what, name) {
     state = "crashed";
-    $("crashTitle").textContent = what === "building" ? "You hit a building!" : what === "water" ? "Splash! You hit the water." : "You hit the ground!";
+    $("crashTitle").textContent = what === "landmark" ? `You hit the ${name}!` : what === "tree" ? "You flew into the trees!" : what === "building" ? "You hit a building!" : what === "water" ? "Splash! You hit the water." : "You hit the ground!";
     $("crashText").textContent = `${placeLabel || "Somewhere on Earth"} · ${Math.round(plane.speed * 3.6)} km/h`;
     $("crash").hidden = false;
   }
@@ -447,6 +470,9 @@
     if (collideTimer > 0.1) {
       collideTimer = 0;
       if (hitBuilding() !== null) return crash("building");
+      const landmark = window.EarthFlight3D?.hitLandmark(plane.lon, plane.lat, plane.alt);
+      if (landmark) return crash("landmark", landmark);
+      if (window.EarthFlight3D?.hitTree(plane.lon, plane.lat, plane.alt)) return crash("tree");
       if (plane.alt - ground > 60) lastSafe = { lat: plane.lat, lon: plane.lon, alt: plane.alt, heading: plane.heading };
     }
     updateCamera();
@@ -462,6 +488,7 @@
     placePlane(start);
     lastSafe = null;
     buildings.clear();
+    window.EarthFlight3D?.resetTrees();
     camMode = 0; $("plane").style.opacity = 1;
     $("pauseBtn").style.display = "block";
     const racing = mode === "race";

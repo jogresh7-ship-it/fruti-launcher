@@ -23,7 +23,9 @@ Map data: [OpenFreeMap](https://openfreemap.org) and © OpenStreetMap contributo
 `fly.html`, or the **✈️ Fly a plane** button, is a flight game over the real world: https://earth-api.pages.dev/fly.html
 
 - Take off over New York, Paris, Dubai, Tokyo, San Francisco, London, Rio, the Swiss Alps or the Grand Canyon. You can also search any town or landmark, or click **Fly from here** on the main map.
-- Fly through real 3D buildings and roads (Streets), or over real satellite photos with 3D buildings (Satellite). The mountains are real terrain, shaded so they look 3D.
+- You fly a 3D Airbus A340 over real satellite photos (the default, the same imagery as the main map's Satellite view) or the colorful Streets map. Both have 3D buildings, and the mountains are real terrain.
+- Real forests and parks fill with 3D trees, and Paris has a 3D Eiffel Tower you can fly under. Trees and the tower are obstacles too.
+- The 3D models live in `public/models/` and need the page served over http (`node server.js` or a host). When it's opened straight from disk, the game falls back to a flat plane picture without trees or the tower. Model credits are in `CREDITS.md`.
 - If you hit a building, a mountain or the water, you crash. **Checkpoint race** mode sets 8 glowing beacons to fly through, and your best time for each city is saved.
 - Controls: arrows or WASD to steer, Shift to boost, Space to slow down, C to change the camera, Esc to pause. A touch stick and buttons appear on phones, and gamepads work too.
 

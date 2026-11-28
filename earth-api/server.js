@@ -7,7 +7,7 @@ import { handle } from "./src/earth.js";
 
 const PORT = Number(process.env.PORT) || 8787;
 const PUBLIC = new URL("./public/", import.meta.url).pathname;
-const TYPES = { ".html": "text/html; charset=utf-8", ".js": "text/javascript", ".css": "text/css", ".json": "application/json", ".svg": "image/svg+xml" };
+const TYPES = { ".html": "text/html; charset=utf-8", ".js": "text/javascript", ".css": "text/css", ".json": "application/json", ".svg": "image/svg+xml", ".glb": "model/gltf-binary" };
 
 createServer(async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host || "localhost"}`);

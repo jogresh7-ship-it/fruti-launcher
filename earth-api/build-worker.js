@@ -11,6 +11,8 @@ const files = {
   "/app.js": ["text/javascript; charset=utf-8", read("./public/app.js")],
   "/fly.html": ["text/html; charset=utf-8", read("./public/fly.html")],
   "/fly.js": ["text/javascript; charset=utf-8", read("./public/fly.js")],
+  "/fly3d.js": ["text/javascript; charset=utf-8", read("./public/fly3d.js")],
+  // public/models/*.glb are binary and too big to inline: host them as static files (Git deploy).
 };
 const worker = `${core}
 const FILES = ${JSON.stringify(files)};
