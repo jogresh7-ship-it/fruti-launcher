@@ -36,6 +36,7 @@
   .mode { display: inline-block; font-size: 12px; font-weight: 500; padding: 2px 8px; border: 1px solid var(--line); border-radius: 99px; color: var(--muted); margin-left: 8px; vertical-align: middle; }
   a { color: var(--accent); }
   .flybtn { display: inline-block; vertical-align: middle; margin-left: 8px; font-size: 14px; font-weight: 700; text-decoration: none; background: var(--accent); color: var(--accent-ink); padding: 5px 12px; border-radius: 99px; }
+  .keybtn { background: var(--panel); color: var(--accent); border: 1px solid var(--accent); }
   .flyhere { display: block; text-align: center; margin-top: 10px; font-weight: 700; text-decoration: none; background: var(--accent); color: var(--accent-ink); padding: 8px; border-radius: 8px; }
   button { font: inherit; color: inherit; }
 
@@ -100,7 +101,7 @@
 </head>
 <body>
 <main>
-  <h1>Earth API <span class="mode" id="mode"></span> <a class="flybtn" href="fly.html">✈️ Fly a plane</a></h1>
+  <h1>Earth API <span class="mode" id="mode"></span> <a class="flybtn" href="fly.html">✈️ Fly a plane</a> <a class="flybtn keybtn" href="keys.html">🔑 Get an API key</a></h1>
   <p class="lead">Explore the planet on a live map: colorful streets, real satellite photos of forests and cities, 3D buildings and mountains. Turn on earthquakes, wildfires and storms, or follow the space station. Click anywhere to see what's there, the weather, the air and the sun.</p>
 
   <div class="mapwrap">
@@ -136,7 +137,7 @@
   </div>
 
   <h2>Try the API</h2>
-  <p class="lead">Every map feature above comes from these endpoints. No key, no sign-up. Pick one, change the query, press Run.</p>
+  <p class="lead">Every map feature above comes from these endpoints. Pick one, change the query, press Run. To use them on your own site, <a href="keys.html">get a free API key</a>.</p>
   <div class="grid">
     <nav class="panel list" id="list" aria-label="Endpoints"></nav>
     <section class="panel try">

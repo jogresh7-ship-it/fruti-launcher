@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Earth API Keys</title>
+<meta name="description" content="Get a free Earth API key and use the API on your own website or app.">
+<style>
+  :root {
+    --bg: #eef4f1; --panel: #ffffff; --ink: #14201a; --muted: #56675e; --line: #d5e0d9;
+    --accent: #12805c; --accent-ink: #ffffff; --code: #eaf1ed; --err: #b3261e; --warn-bg: #fff6dd; --warn-ink: #6b4b00;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0b1210; --panel: #141d19; --ink: #e4ede8; --muted: #93a59b; --line: #24332c;
+      --accent: #3ccf8e; --accent-ink: #062014; --code: #0f1714; --err: #ff8a80; --warn-bg: #2b2410; --warn-ink: #ffd98a;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0b1210; --panel: #141d19; --ink: #e4ede8; --muted: #93a59b; --line: #24332c;
+    --accent: #3ccf8e; --accent-ink: #062014; --code: #0f1714; --err: #ff8a80; --warn-bg: #2b2410; --warn-ink: #ffd98a;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 860px; margin: 0 auto; padding: 24px 16px 64px; }
+  a { color: var(--accent); }
+  h1 { font-size: 28px; margin: 8px 0 4px; }
+  h2 { font-size: 19px; margin: 0 0 10px; }
+  .lead { color: var(--muted); margin: 0 0 20px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 18px; margin-bottom: 16px; }
+  label { display: block; font-weight: 600; font-size: 14px; margin: 10px 0 4px; }
+  label small { font-weight: 400; color: var(--muted); }
+  input { width: 100%; border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; background: var(--code); color: var(--ink); font: inherit; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .row input { flex: 1; min-width: 0; width: auto; }
+  button { font: inherit; cursor: pointer; border-radius: 8px; padding: 10px 16px; font-weight: 700; border: 1px solid var(--line); background: var(--code); color: var(--ink); }
+  button.primary { background: var(--accent); color: var(--accent-ink); border-color: transparent; }
+  button.danger { color: var(--err); }
+  .go { margin-top: 14px; }
+  .msg { min-height: 1.5em; margin-top: 10px; font-size: 14px; color: var(--muted); }
+  .msg.err { color: var(--err); }
+  .key { font: 15px ui-monospace, SFMono-Regular, Menlo, monospace; background: var(--code); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; word-break: break-all; flex: 1; min-width: 0; }
+  .warn { background: var(--warn-bg); color: var(--warn-ink); border-radius: 8px; padding: 10px 12px; margin: 12px 0; font-size: 14px; }
+  pre { margin: 6px 0 14px; background: var(--code); border-radius: 8px; padding: 12px; overflow: auto; font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre-wrap; word-break: break-word; }
+  .tabs { display: flex; gap: 4px; margin-top: 10px; flex-wrap: wrap; }
+  .tabs button { padding: 6px 12px; font-size: 13px; }
+  .tabs button[aria-selected="true"] { background: var(--accent); color: var(--accent-ink); border-color: transparent; }
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; margin-top: 12px; }
+  .stat { background: var(--code); border-radius: 8px; padding: 10px 12px; }
+  .stat span { display: block; color: var(--muted); font-size: 12px; }
+  .stat b { font-size: 18px; word-break: break-word; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th, td { text-align: left; padding: 7px 6px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; font-size: 13px; }
+  td code { font-size: 13px; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<main>
+  <a href="./">← Earth API map</a>
+  <h1>🔑 Get a free API key</h1>
+  <p class="lead">Use the Earth API on your own website or app: weather, air quality, earthquakes, wildfires, countries, the space station, sunrise and sunset, and more. Free, no sign-up, no email.</p>
+
+  <section class="card" id="createCard">
+    <h2>1. Create your key</h2>
+    <form id="createForm">
+      <label for="name">Project name</label>
+      <input id="name" maxlength="60" required placeholder="My weather widget" autocomplete="off">
+      <label for="site">Your website <small>(optional)</small></label>
+      <input id="site" maxlength="200" placeholder="https://my-site.example" autocomplete="url" inputmode="url">
+      <button class="primary go" type="submit">Create my API key</button>
+    </form>
+    <div class="msg" id="createMsg"></div>
+
+    <div id="result" hidden>
+      <div class="warn"><b>Copy your key now.</b> It's shown only once. We only keep a fingerprint of it, so it can't be recovered. If you lose it, just make a new one.</div>
+      <div class="row">
+        <div class="key" id="keyText"></div>
+        <button type="button" id="copyKey">Copy</button>
+      </div>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>2. Use it</h2>
+    <p class="lead" style="margin:0">Add your key to any request as <code>?key=…</code>, or send it in an <code>x-api-key</code> header. Every response is JSON and works from any website.</p>
+    <div class="tabs" role="tablist" aria-label="Code examples">
+      <button type="button" role="tab" data-tab="js" aria-selected="true">JavaScript</button>
+      <button type="button" role="tab" data-tab="html" aria-selected="false">Web page</button>
+      <button type="button" role="tab" data-tab="curl" aria-selected="false">curl</button>
+      <button type="button" role="tab" data-tab="python" aria-selected="false">Python</button>
+    </div>
+    <pre id="example"></pre>
+    <table>
+      <thead><tr><th>Endpoint</th><th>What you get</th></tr></thead>
+      <tbody id="endpoints"></tbody>
+    </table>
+  </section>
+
+  <section class="card">
+    <h2>3. Check or revoke a key</h2>
+    <form class="row" id="checkForm">
+      <input id="checkKey" placeholder="ek_…" autocomplete="off" spellcheck="false" aria-label="Your API key">
+      <button type="submit">Check usage</button>
+    </form>
+    <div class="msg" id="checkMsg"></div>
+    <div id="usage" hidden>
+      <div class="stats" id="usageStats"></div>
+      <button type="button" class="danger go" id="revoke">Revoke this key</button>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Limits</h2>
+    <table>
+      <tbody>
+        <tr><td>With a key</td><td><b>10,000 requests a day</b> per key</td></tr>
+        <tr><td>Without a key, from another site or app</td><td>200 requests a day per visitor</td></tr>
+        <tr><td>New keys</td><td>5 a day per visitor</td></tr>
+      </tbody>
+    </table>
+    <p class="lead" style="margin:10px 0 0">Limits reset at midnight UTC. Every response tells you what's left in the <code>x-ratelimit-remaining</code> header. Data comes from Open-Meteo, USGS, NASA EONET, the World Bank, OpenStreetMap and wheretheiss.at, so please credit them as each response's <code>source</code> field says.</p>
+  </section>
+</main>
+
+<script src="earth-browser.js"></script>
+<script src="keys-page.js"></script>
+</body>
+</html>

@@ -29,6 +29,15 @@ Map data: [OpenFreeMap](https://openfreemap.org) and © OpenStreetMap contributo
 - If you hit a building, a mountain or the water, you crash. **Checkpoint race** mode sets 8 glowing beacons to fly through, and your best time for each city is saved.
 - Controls: arrows or WASD to steer, Shift to boost, Space to slow down, C to change the camera, Esc to pause. A touch stick and buttons appear on phones, and gamepads work too.
 
+## API keys
+
+Anyone can get a free key at `/keys.html` (the **🔑 Get an API key** button) and call the API from their own site or app with `?key=ek_...` or an `x-api-key` header.
+
+- With a key: 10,000 requests a day. Without a key, from another site: 200 a day per visitor. This site's own map and game are not limited.
+- `POST /api/keys` with `{"name": "...", "site": "https://..."}` creates a key, `GET /api/keys/me` shows today's usage, and `DELETE /api/keys/me` revokes it.
+- Keys and visitor IPs are stored only as SHA-256 hashes. The code is in `src/keys.js`.
+- Storage: a Cloudflare D1 database bound as `DB` in the Pages project. The local `node server.js` uses Node's built-in SQLite in `data/keys.sqlite` instead (Node 22.13 or newer).
+
 ## Endpoints
 
 | Endpoint | What it gives you | Data |

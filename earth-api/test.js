@@ -157,3 +157,79 @@ test("reverse geocode", async () => {
   mocks["nominatim.openstreetmap.org"] = { error: "Unable to geocode" };
   assert.equal((await get("/api/reverse?lat=0&lon=-30")).body.name, null);
 });
+
+// ---------- API keys ----------
+import { withKeys, LIMITS } from "./src/keys.js";
+import { openD1 } from "./src/sqlite-d1.js";
+
+test("API keys: create, use, limits, usage, revoke", async () => {
+  const env = { DB: openD1(":memory:") };
+  const call = (path, init = {}) => withKeys(new Request("https://earth.example" + path, init), env, handle);
+  const fromOtherSite = { headers: { origin: "https://someone-else.example", "x-forwarded-for": "203.0.113.7" } };
+
+  // create
+  let res = await call("/api/keys", { method: "POST", headers: { "content-type": "application/json", "x-forwarded-for": "198.51.100.1" }, body: JSON.stringify({ name: "My weather app", site: "https://myapp.example" }) });
+  assert.equal(res.status, 201);
+  const made = await res.json();
+  assert.match(made.key, /^ek_[0-9a-f]{48}$/);
+  assert.equal(made.dailyLimit, LIMITS.KEY_LIMIT);
+
+  // bad input
+  res = await call("/api/keys", { method: "POST", body: JSON.stringify({ name: "x" }) });
+  assert.equal(res.status, 400);
+  res = await call("/api/keys", { method: "POST", body: JSON.stringify({ name: "ok name", site: "javascript:alert(1)" }) });
+  assert.equal(res.status, 400);
+
+  // use it from another site, by query and by header
+  res = await call(`/api/facts?key=${made.key}`, fromOtherSite);
+  assert.equal(res.status, 200);
+  assert.equal(res.headers.get("x-ratelimit-remaining"), String(LIMITS.KEY_LIMIT - 1));
+  res = await call("/api/sun?lat=1&lon=1", { headers: { ...fromOtherSite.headers, "x-api-key": made.key } });
+  assert.equal(res.status, 200);
+  res = await call("/api/moon", { headers: { authorization: "Bearer " + made.key } });
+  assert.equal(res.status, 200);
+
+  // usage
+  res = await call("/api/keys/me", { headers: { "x-api-key": made.key } });
+  const me = await res.json();
+  assert.equal(me.usedToday, 3);
+  assert.equal(me.name, "My weather app");
+  assert.equal(me.prefix, made.key.slice(0, 10));
+  assert.equal(JSON.stringify(me).includes(made.key), false); // the full key is never shown again
+
+  // wrong key
+  res = await call("/api/facts?key=ek_" + "0".repeat(48), fromOtherSite);
+  assert.equal(res.status, 401);
+
+  // the site's own pages are not counted
+  res = await call("/api/facts", { headers: { "sec-fetch-site": "same-origin" } });
+  assert.equal(res.status, 200);
+  assert.equal(res.headers.get("x-ratelimit-limit"), null);
+
+  // no key from another site: small daily allowance
+  for (let i = 0; i < LIMITS.ANON_LIMIT; i++) assert.equal((await call("/api/facts", fromOtherSite)).status, 200);
+  res = await call("/api/facts", fromOtherSite);
+  assert.equal(res.status, 429);
+  assert.ok(Number(res.headers.get("retry-after")) > 0);
+  assert.match((await res.json()).error, /keys\.html/);
+
+  // signups per visitor per day
+  const signup = () => call("/api/keys", { method: "POST", headers: { "x-forwarded-for": "192.0.2.50" }, body: JSON.stringify({ name: "Spam test" }) });
+  for (let i = 0; i < LIMITS.SIGNUPS_PER_DAY; i++) assert.equal((await signup()).status, 201);
+  assert.equal((await signup()).status, 429);
+
+  // revoke
+  res = await call("/api/keys/me", { method: "DELETE", headers: { "x-api-key": made.key } });
+  assert.equal((await res.json()).revoked, true);
+  assert.equal((await call(`/api/facts?key=${made.key}`, fromOtherSite)).status, 401);
+
+  // CORS preflight lets other sites send the key header
+  res = await call("/api/facts", { method: "OPTIONS" });
+  assert.equal(res.status, 204);
+  assert.match(res.headers.get("access-control-allow-headers"), /x-api-key/);
+});
+
+test("without a database, keys are off and the API still works", async () => {
+  assert.equal((await withKeys(new Request("https://x/api/facts"), {}, handle)).status, 200);
+  assert.equal((await withKeys(new Request("https://x/api/keys", { method: "POST" }), {}, handle)).status, 503);
+});
