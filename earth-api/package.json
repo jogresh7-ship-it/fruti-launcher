@@ -1,0 +1,13 @@
+{
+  "name": "earth-api",
+  "version": "1.0.0",
+  "description": "A free, keyless Earth API: weather, air, earthquakes, natural events, countries, ISS, plus its own sun, moon and distance math.",
+  "type": "module",
+  "license": "MIT",
+  "scripts": {
+    "start": "node server.js",
+    "build": "node build.js",
+    "test": "node --test test.js",
+    "deploy": "npx wrangler pages deploy public"
+  }
+}

@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Earth API</title>
+<style>
+  :root {
+    --bg: #f4f6f3; --panel: #ffffff; --ink: #18211c; --muted: #5d6b62; --line: #dde3dd;
+    --accent: #1f7a4d; --accent-ink: #ffffff; --code: #eef2ee; --err: #b3261e;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0e1411; --panel: #161e19; --ink: #e5ece7; --muted: #93a39a; --line: #26322b;
+      --accent: #4cc48a; --accent-ink: #08130d; --code: #101813; --err: #ff8a80;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0e1411; --panel: #161e19; --ink: #e5ece7; --muted: #93a39a; --line: #26322b;
+    --accent: #4cc48a; --accent-ink: #08130d; --code: #101813; --err: #ff8a80;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 1080px; margin: 0 auto; padding: 32px 16px 64px; }
+  h1 { font-size: 28px; margin: 0 0 4px; }
+  .lead { color: var(--muted); margin: 0 0 24px; max-width: 70ch; }
+  .mode { display: inline-block; font-size: 12px; padding: 2px 8px; border: 1px solid var(--line); border-radius: 99px; color: var(--muted); margin-left: 8px; vertical-align: middle; }
+  .grid { display: grid; grid-template-columns: minmax(0, 340px) minmax(0, 1fr); gap: 16px; align-items: start; }
+  @media (max-width: 760px) { .grid { grid-template-columns: minmax(0, 1fr); } }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; }
+  .list { padding: 6px; }
+  .ep { display: block; width: 100%; text-align: left; background: none; border: 0; color: inherit; padding: 8px 10px; border-radius: 6px; cursor: pointer; font: inherit; }
+  .ep:hover, .ep[aria-current="true"] { background: var(--code); }
+  .ep code { font-weight: 600; }
+  .ep span { display: block; color: var(--muted); font-size: 13px; }
+  .try { padding: 14px; }
+  form { display: flex; gap: 8px; }
+  input { flex: 1; min-width: 0; font: 14px ui-monospace, SFMono-Regular, Menlo, monospace; padding: 9px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--code); color: var(--ink); }
+  button.go { background: var(--accent); color: var(--accent-ink); border: 0; border-radius: 6px; padding: 0 16px; font: 600 14px system-ui, sans-serif; cursor: pointer; }
+  .meta { color: var(--muted); font-size: 13px; margin: 10px 0 6px; min-height: 1.5em; }
+  .meta.err { color: var(--err); }
+  pre { margin: 0; background: var(--code); border-radius: 6px; padding: 12px; overflow: auto; max-height: 70vh; font: 13px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre-wrap; word-break: break-word; }
+  footer { color: var(--muted); font-size: 13px; margin-top: 24px; }
+  a { color: var(--accent); }
+</style>
+</head>
+<body>
+<main>
+  <h1>Earth API <span class="mode" id="mode"></span></h1>
+  <p class="lead">A free JSON API about our planet. No key, no sign-up. Some answers come from its own math (sun, moon, distances), others from open public data (USGS, NASA EONET, Open-Meteo, REST Countries). Pick an endpoint, change the query, press Run.</p>
+
+  <div class="grid">
+    <nav class="panel list" id="list" aria-label="Endpoints"></nav>
+    <section class="panel try">
+      <form id="form">
+        <input id="path" aria-label="Request path" spellcheck="false" autocomplete="off">
+        <button class="go" type="submit">Run</button>
+      </form>
+      <div class="meta" id="meta"></div>
+      <pre id="out">Pick an endpoint on the left.</pre>
+    </section>
+  </div>
+
+  <footer>Open source. Data credits are in each response's <code>source</code> field.</footer>
+</main>
+
+<script src="earth-browser.js"></script>
+<script>
+  const served = location.protocol.startsWith("http");
+  document.getElementById("mode").textContent = served ? "live server" : "running in your browser";
+
+  async function call(path) {
+    if (served) return fetch(path);
+    // Opened from disk: run the same router right here in the page.
+    return EarthAPI.handle(new Request("https://earth.local" + path));
+  }
+
+  const list = document.getElementById("list");
+  const input = document.getElementById("path");
+  const meta = document.getElementById("meta");
+  const out = document.getElementById("out");
+
+  for (const ep of EarthAPI.docs) {
+    const b = document.createElement("button");
+    b.className = "ep";
+    b.type = "button";
+    b.innerHTML = "<code></code><span></span>";
+    b.querySelector("code").textContent = ep.path;
+    b.querySelector("span").textContent = ep.description;
+    b.onclick = () => {
+      list.querySelectorAll(".ep").forEach((x) => x.removeAttribute("aria-current"));
+      b.setAttribute("aria-current", "true");
+      input.value = ep.example;
+      run();
+    };
+    list.append(b);
+  }
+
+  async function run() {
+    const path = input.value.trim();
+    if (!path.startsWith("/api")) { meta.className = "meta err"; meta.textContent = "Paths start with /api"; return; }
+    meta.className = "meta";
+    meta.textContent = "Loading…";
+    const t = performance.now();
+    try {
+      const res = await call(path);
+      const text = await res.text();
+      meta.className = res.ok ? "meta" : "meta err";
+      meta.textContent = `${res.status} · ${Math.round(performance.now() - t)} ms`;
+      out.textContent = text;
+    } catch (e) {
+      meta.className = "meta err";
+      meta.textContent = "Request failed: " + e.message;
+    }
+  }
+
+  document.getElementById("form").onsubmit = (e) => { e.preventDefault(); run(); };
+  list.querySelector(".ep").click();
+</script>
+</body>
+</html>

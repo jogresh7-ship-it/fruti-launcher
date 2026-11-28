@@ -53,3 +53,7 @@ cd world && npm install && npm run build
 ```
 
 Credits are in `world/CREDITS.md`.
+
+## Earth API
+
+`earth-api/` is a free, keyless JSON API about the planet: weather, air quality, earthquakes, NASA natural events, countries, the ISS, plus its own sun, moon and distance math. Open `earth-api/public/index.html` to try it, run `node earth-api/server.js`, or host it on Cloudflare Pages. See `earth-api/README.md`.
